@@ -766,9 +766,9 @@ const Parser = struct {
 };
 
 /// Parse a TOML document. On success, returns the root `Value` (always
-/// a `.table`). The returned `Value` tree is allocated from `allocator` and
-/// must be freed by calling `Value.deinit()`.
-pub fn parse(allocator: Allocator, input: []const u8) !Value {
+/// a `.table`). The returned `Value` tree is allocated from `gpa` and must be
+/// freed by calling `Value.deinit(gpa)`.
+pub fn parse(gpa: Allocator, input: []const u8) !Value {
     // TODO: Maybe add an option to skip the UTF-8 validation for faster
     // parsing.
     if (!utf8Validate(input)) {
@@ -776,7 +776,7 @@ pub fn parse(allocator: Allocator, input: []const u8) !Value {
     }
 
     // Use a temporary arena for all intermediate parsing allocations.
-    var arena_instance: std.heap.ArenaAllocator = .init(allocator);
+    var arena_instance: std.heap.ArenaAllocator = .init(gpa);
     defer arena_instance.deinit();
     const arena = arena_instance.allocator();
 
@@ -820,7 +820,7 @@ pub fn parse(allocator: Allocator, input: []const u8) !Value {
         return error.UnexpectedToken;
     }
 
-    return parseResult(allocator, parsing_root);
+    return parseResult(gpa, parsing_root);
 }
 
 /// Parse a TOML document with better diagnostics output. On success, returns
@@ -828,9 +828,9 @@ pub fn parse(allocator: Allocator, input: []const u8) !Value {
 /// `diag` is non-null, fills it with a human‑readable message and the exact
 /// source location (line, column, snippet).
 ///
-/// The returned `Value` tree is allocated from `allocator` and must be freed by
-/// calling `Value.deinit()`.
-pub fn parseWithDiagnostics(allocator: Allocator, input: []const u8, diag: ?*Diagnostics) !Value {
+/// The returned `Value` tree is allocated from `gpa` and must be freed by
+/// calling `Value.deinit(gpa)`.
+pub fn parseWithDiagnostics(gpa: Allocator, input: []const u8, diag: ?*Diagnostics) !Value {
     if (!utf8Validate(input)) {
         if (diag) |outp| {
             const pos = computePlace(input, 0);
@@ -844,7 +844,7 @@ pub fn parseWithDiagnostics(allocator: Allocator, input: []const u8, diag: ?*Dia
         return error.InvalidUtf8;
     }
 
-    var arena_instance: std.heap.ArenaAllocator = .init(allocator);
+    var arena_instance: std.heap.ArenaAllocator = .init(gpa);
     defer arena_instance.deinit();
     const arena = arena_instance.allocator();
 
@@ -932,7 +932,7 @@ pub fn parseWithDiagnostics(allocator: Allocator, input: []const u8, diag: ?*Dia
         }
     }
 
-    return parseResult(allocator, parsing_root);
+    return parseResult(gpa, parsing_root);
 }
 
 fn computePlace(input: []const u8, cursor: usize) struct {
