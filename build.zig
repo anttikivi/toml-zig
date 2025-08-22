@@ -2,10 +2,12 @@ const std = @import("std");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
-    // const optimize = b.standardOptimizeOption(.{});
-    const mod = b.addModule("toml_zig", .{
+    const optimize = b.standardOptimizeOption(.{});
+
+    const mod = b.addModule("toml", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
+        .optimize = optimize,
     });
 
     const mod_tests = b.addTest(.{
@@ -19,7 +21,7 @@ pub fn build(b: *std.Build) void {
     const test_mod = b.createModule(.{
         .root_source_file = b.path("test/toml.zig"),
         .target = target,
-        // .optimize = optimize,
+        .optimize = optimize,
     });
     test_mod.addImport("toml", mod);
 
