@@ -32,16 +32,7 @@ pub const Diagnostics = struct {
 
     /// For formatting with std.fmt. Supports only the default format, and
     /// provides a helpful way to easily print the diagnostics information.
-    pub fn format(
-        self: @This(),
-        comptime fmt: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        if (fmt.len != 0) {
-            std.fmt.invalidFmtError(fmt, self);
-        }
-
+    pub fn format(self: @This(), writer: *std.Io.Writer) !void {
         try writer.print(
             "error parsing TOML document on line {d}, column {d}\n",
             .{ self.line, self.column },

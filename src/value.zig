@@ -71,16 +71,7 @@ pub const Datetime = struct {
 
     /// For formatting with std.fmt. Supports only the default format:
     /// RFC3339-like (YYYY-MM-DDTHH:MM:SS[.fffffffff][Z|+hh:mm])
-    pub fn format(
-        self: @This(),
-        comptime fmt: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        if (fmt.len != 0) {
-            std.fmt.invalidFmtError(fmt, self);
-        }
-
+    pub fn format(self: @This(), writer: *std.Io.Writer) !void {
         try writer.print(
             "{d}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}",
             .{ self.year, self.month, self.day, self.hour, self.minute, self.second },
@@ -158,16 +149,7 @@ pub const Date = struct {
     day: u8,
 
     /// For formatting with std.fmt. Supports only default format.
-    pub fn format(
-        self: @This(),
-        comptime fmt: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        if (fmt.len != 0) {
-            std.fmt.invalidFmtError(fmt, self);
-        }
-
+    pub fn format(self: @This(), writer: *std.Io.Writer) !void {
         try writer.print("{d}-{d:0>2}-{d:0>2}", .{ self.year, self.month, self.day });
     }
 
@@ -204,16 +186,7 @@ pub const Time = struct {
     nano: ?u32 = null,
 
     /// For formatting with std.fmt. Supports only default format.
-    pub fn format(
-        self: @This(),
-        comptime fmt: []const u8,
-        _: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        if (fmt.len != 0) {
-            std.fmt.invalidFmtError(fmt, self);
-        }
-
+    pub fn format(self: @This(), writer: *std.Io.Writer) !void {
         try writer.print("{d:0>2}:{d:0>2}:{d:0>2}", .{ self.hour, self.minute, self.second });
 
         if (self.nano) |nano| {
