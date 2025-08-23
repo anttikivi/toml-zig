@@ -41,6 +41,40 @@ pub const Value = union(enum) {
             else => {}, // no-op
         }
     }
+
+    pub fn format(self: @This(), writer: *std.Io.Writer) !void {
+        switch (self) {
+            .string => |s| try writer.print("{s}", .{s}),
+            .int => |i| try writer.print("{d}", .{i}),
+            .float => |f| try writer.print("{d}", .{f}),
+            .bool => |b| try writer.write(if (b) "true" else "false"),
+            .datetime, .local_datetime => |dt| try writer.print("{f}", .{dt}),
+            .local_date => |d| try writer.print("{f}", .{d}),
+            .local_time => |t| try writer.print("{f}", .{t}),
+            .array => |array| {
+                try writer.writeByte('[');
+                for (array, 0..) |a, i| {
+                    if (i > 0) {
+                        try writer.write(", ");
+                    }
+                    try writer.print("{f}", .{a});
+                }
+                try writer.writeByte(']');
+            },
+            .table => |t| {
+                try writer.writeByte('{');
+                var it = t.iterator();
+                var i: usize = 0;
+                while (it.next()) |e| : (i += 1) {
+                    if (i > 0) {
+                        try writer.write(", ");
+                    }
+                    try writer.print("{s} = {f}", .{ e.key_ptr.*, e.value_ptr.* });
+                }
+                try writer.writeByte('}');
+            },
+        }
+    }
 };
 
 /// Represents a TOML array value that is normally wrapped in a `Value`.

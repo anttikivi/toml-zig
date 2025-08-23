@@ -8,6 +8,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - `optimize` option to `build.zig`.
+- `format` function to `Value` to easily print its value using the `f` specifier
+  in `print`.
 
 ### Changed
 
