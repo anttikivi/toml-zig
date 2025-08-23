@@ -3,6 +3,10 @@
 A TOML 1.0.0 parser written in Zig. This parser implements the complete TOML
 specification with optional diagnostics.
 
+> [!NOTE]
+> This library does&rsquo;t currently work properly on Windows. Windows support
+> will be added in a later release.
+
 ## Quick Start
 
 ### Prerequisites
