@@ -53,7 +53,7 @@ pub const Value = union(enum) {
             .local_time => |t| try writer.print("{f}", .{t}),
             .array => |array| {
                 try writer.writeByte('[');
-                for (array, 0..) |a, i| {
+                for (array.items, 0..) |a, i| {
                     if (i > 0) {
                         try writer.write(", ");
                     }
