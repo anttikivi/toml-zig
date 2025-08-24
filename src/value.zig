@@ -47,7 +47,7 @@ pub const Value = union(enum) {
             .string => |s| try writer.print("{s}", .{s}),
             .int => |i| try writer.print("{d}", .{i}),
             .float => |f| try writer.print("{d}", .{f}),
-            .bool => |b| try writer.write(if (b) "true" else "false"),
+            .bool => |b| try writer.writeAll(if (b) "true" else "false"),
             .datetime, .local_datetime => |dt| try writer.print("{f}", .{dt}),
             .local_date => |d| try writer.print("{f}", .{d}),
             .local_time => |t| try writer.print("{f}", .{t}),
@@ -55,7 +55,7 @@ pub const Value = union(enum) {
                 try writer.writeByte('[');
                 for (array.items, 0..) |a, i| {
                     if (i > 0) {
-                        try writer.write(", ");
+                        try writer.writeAll(", ");
                     }
                     try writer.print("{f}", .{a});
                 }
@@ -67,7 +67,7 @@ pub const Value = union(enum) {
                 var i: usize = 0;
                 while (it.next()) |e| : (i += 1) {
                     if (i > 0) {
-                        try writer.write(", ");
+                        try writer.writeAll(", ");
                     }
                     try writer.print("{s} = {f}", .{ e.key_ptr.*, e.value_ptr.* });
                 }
