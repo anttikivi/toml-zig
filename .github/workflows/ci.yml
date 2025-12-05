@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.head_ref || github.run_id }}-${{ github.actor }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.0
+      - uses: mlugg/setup-zig@v2.1.0
+      - run: zig build ci -- check
+
+  test:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - { os: "linux", arch: "x86_64", runner: "ubuntu-24.04" }
+          - { os: "linux", arch: "x86_64", runner: "ubuntu-22.04" }
+          - { os: "linux", arch: "aarch64", runner: "ubuntu-24.04-arm" }
+          - { os: "linux", arch: "aarch64", runner: "ubuntu-22.04-arm" }
+          - { os: "macos", arch: "x86_64", runner: "macos-13" }
+          - { os: "macos", arch: "aarch64", runner: "macos-14" }
+          - { os: "macos", arch: "aarch64", runner: "macos-15" }
+          - { os: "windows", arch: "x86_64", runner: "windows-2025" }
+          - { os: "windows", arch: "x86_64", runner: "windows-2022" }
+          - { os: "windows", arch: "aarch64", runner: "windows-11-arm" }
+      fail-fast: false
+
+    steps:
+      - uses: actions/checkout@v6.0.0
+      - uses: mlugg/setup-zig@v2.1.0
+      - uses: actions/setup-go@v6.1.0
+        with:
+          go-version: "1.25"
+      - run: go install github.com/toml-lang/toml-test/cmd/toml-test@latest
+      - run: zig build ci -- test
