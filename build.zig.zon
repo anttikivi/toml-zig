@@ -1,6 +1,6 @@
 .{
     .name = .toml,
-    .version = "0.0.0",
+    .version = "0.1.0-dev",
     .fingerprint = 0x12c55c53620defb4,
     .minimum_zig_version = "0.15.2",
     .paths = .{
