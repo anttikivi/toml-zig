@@ -14,6 +14,9 @@ pub const DecodeOptions = struct {
 
     /// The version of TOML to accept in the decoding.
     toml_version: TomlVersion = .@"1.1.0",
+
+    /// Whether to check that the input is a valid UTF-8 string.
+    validate_utf8: bool = true,
 };
 
 /// Diagnostics can contain additional information about errors in decoding. To
@@ -75,6 +78,8 @@ pub const Diagnostics = struct {
     }
 };
 
+const Utf8Error = Allocator.Error || error{ InvalidUtf8, Reported };
+
 const Parsed = struct {
     arena: std.heap.ArenaAllocator,
 
@@ -87,6 +92,10 @@ pub fn decode(gpa: Allocator, input: []const u8, options: DecodeOptions) !Parsed
     var arena: std.heap.ArenaAllocator = .init(gpa);
     const allocator = arena.allocator();
 
+    if (options.validate_utf8) {
+        try validateUtf8(gpa, input, options.diagnostics);
+    }
+
     const owned_input = if (options.borrow_input) input else try allocator.dupe(u8, input);
 
     const parser: Parser = .init(allocator, gpa, owned_input, options);
@@ -96,4 +105,71 @@ pub fn decode(gpa: Allocator, input: []const u8, options: DecodeOptions) !Parsed
         .arena = arena,
         .input = owned_input,
     };
+}
+
+/// Check if the input is a valid UTF-8 string. The function goes through
+/// the whole input and checks each byte. It may be skipped if working under
+/// strict constraints.
+///
+/// See: http://unicode.org/mail-arch/unicode-ml/y2003-m02/att-0467/01-The_Algorithm_to_Valide_an_UTF-8_String
+fn validateUtf8(gpa: Allocator, input: []const u8, diagnostics: ?*Diagnostics) Utf8Error!void {
+    const Utf8State = enum { start, a, b, c, d, e, f, g };
+    var state: Utf8State = .start;
+
+    for (input, 0..) |c, i| {
+        switch (state) {
+            .start => switch (c) {
+                0...0x7F => {},
+                0xC2...0xDF => state = .a,
+                0xE1...0xEC, 0xEE...0xEF => state = .b,
+                0xE0 => state = .c,
+                0xED => state = .d,
+                0xF1...0xF3 => state = .e,
+                0xF0 => state = .f,
+                0xF4 => state = .g,
+                0x80...0xBF, 0xC0...0xC1, 0xF5...0xFF => return failUtf8(gpa, input, i, diagnostics),
+            },
+            .a => switch (c) {
+                0x80...0xBF => state = .start,
+                else => return failUtf8(gpa, input, i, diagnostics),
+            },
+            .b => switch (c) {
+                0x80...0xBF => state = .a,
+                else => return failUtf8(gpa, input, i, diagnostics),
+            },
+            .c => switch (c) {
+                0xA0...0xBF => state = .a,
+                else => return failUtf8(gpa, input, i, diagnostics),
+            },
+            .d => switch (c) {
+                0x80...0x9F => state = .a,
+                else => return failUtf8(gpa, input, i, diagnostics),
+            },
+            .e => switch (c) {
+                0x80...0xBF => state = .b,
+                else => return failUtf8(gpa, input, i, diagnostics),
+            },
+            .f => switch (c) {
+                0x90...0xBF => state = .b,
+                else => return failUtf8(gpa, input, i, diagnostics),
+            },
+            .g => switch (c) {
+                0x80...0x8F => state = .b,
+                else => return failUtf8(gpa, input, i, diagnostics),
+            },
+        }
+    }
+
+    if (state != .start) {
+        return failUtf8(gpa, input, input.len - 1, diagnostics);
+    }
+}
+
+fn failUtf8(gpa: Allocator, input: []const u8, cursor: usize, diagnostics: ?*Diagnostics) Utf8Error {
+    if (diagnostics) |d| {
+        try d.init(gpa, "invalid UTF-8 sequence", input, cursor);
+        return error.Reported;
+    }
+
+    return error.InvalidUtf8;
 }
