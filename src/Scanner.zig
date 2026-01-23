@@ -861,7 +861,7 @@ fn readTimezone(self: *Scanner) Error!?i16 {
     const sign: i16 = if (c == '-') -1 else 1;
     self.cursor += 1;
 
-    const hour = @as(i16, try self.readDatetimeDigits(u8, 2));
+    const hour: i16 = try self.readDatetimeDigits(u8, 2);
 
     if (self.cursor >= self.input.len or self.input[self.cursor] != ':') {
         return self.fail(.{ .@"error" = error.InvalidDatetime });
@@ -869,7 +869,7 @@ fn readTimezone(self: *Scanner) Error!?i16 {
 
     self.cursor += 1;
 
-    const minute = @as(i16, try self.readDatetimeDigits(u8, 2));
+    const minute: i16 = try self.readDatetimeDigits(u8, 2);
 
     if (hour > 23 or minute > 59) {
         return self.fail(.{ .@"error" = error.InvalidDatetime });
