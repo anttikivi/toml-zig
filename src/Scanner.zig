@@ -2192,19 +2192,6 @@ fn runNextKeyValueTests(test_cases: anytype, comptime key_mode: bool) !void {
                         if (key_mode) scanner.testNextKey() else scanner.testNextValue(),
                     );
                 },
-                .nan => {
-                    const actual = try if (key_mode) blk: {
-                        break :blk scanner.testNextKey();
-                    } else blk: {
-                        break :blk scanner.testNextValue();
-                    };
-                    switch (actual) {
-                        .float => |actual_float| {
-                            try std.testing.expect(std.math.isNan(actual_float));
-                        },
-                        else => try std.testing.expectEqual(expected, actual),
-                    }
-                },
                 else => {
                     const actual = try if (key_mode) blk: {
                         break :blk scanner.testNextKey();
@@ -2253,6 +2240,11 @@ fn runNextKeyValueTests(test_cases: anytype, comptime key_mode: bool) !void {
                         .local_time => |actual_dt| {
                             try std.testing.expect(expected == .local_time);
                             try std.testing.expectEqual(expected.local_time, actual_dt);
+                        },
+                        .float => |actual_float| if (expected == .nan) {
+                            try std.testing.expect(std.math.isNan(actual_float));
+                        } else {
+                            try std.testing.expectEqual(expected, actual);
                         },
                         else => try std.testing.expectEqual(expected, actual),
                     }
