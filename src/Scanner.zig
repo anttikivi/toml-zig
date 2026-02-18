@@ -1076,6 +1076,7 @@ const TestToken = union(enum) {
 
     int: i64,
     float: f64,
+    nan,
     bool: bool,
 
     datetime: Datetime,
@@ -1971,7 +1972,66 @@ const next_value_test_cases = next_test_cases ++ [_]NextTestCase{
             .end_of_file,
         },
     },
-    // TODO: Devise a way to check the NaNs.
+    .{
+        .input =
+        \\nan
+        \\
+        ,
+        .seq = &[_]TestToken{
+            .nan,
+            .line_feed,
+            .end_of_file,
+        },
+    },
+    .{
+        .input =
+        \\nan
+        ,
+        .seq = &[_]TestToken{
+            .nan,
+            .end_of_file,
+        },
+    },
+    .{
+        .input =
+        \\+nan
+        \\
+        ,
+        .seq = &[_]TestToken{
+            .nan,
+            .line_feed,
+            .end_of_file,
+        },
+    },
+    .{
+        .input =
+        \\+nan
+        ,
+        .seq = &[_]TestToken{
+            .nan,
+            .end_of_file,
+        },
+    },
+    .{
+        .input =
+        \\-nan
+        \\
+        ,
+        .seq = &[_]TestToken{
+            .nan,
+            .line_feed,
+            .end_of_file,
+        },
+    },
+    .{
+        .input =
+        \\-nan
+        ,
+        .seq = &[_]TestToken{
+            .nan,
+            .end_of_file,
+        },
+    },
     .{
         .input =
         \\0
@@ -2132,6 +2192,19 @@ fn runNextKeyValueTests(test_cases: anytype, comptime key_mode: bool) !void {
                         if (key_mode) scanner.testNextKey() else scanner.testNextValue(),
                     );
                 },
+                .nan => {
+                    const actual = try if (key_mode) blk: {
+                        break :blk scanner.testNextKey();
+                    } else blk: {
+                        break :blk scanner.testNextValue();
+                    };
+                    switch (actual) {
+                        .float => |actual_float| {
+                            try std.testing.expect(std.math.isNan(actual_float));
+                        },
+                        else => try std.testing.expectEqual(expected, actual),
+                    }
+                },
                 else => {
                     const actual = try if (key_mode) blk: {
                         break :blk scanner.testNextKey();
@@ -2181,9 +2254,7 @@ fn runNextKeyValueTests(test_cases: anytype, comptime key_mode: bool) !void {
                             try std.testing.expect(expected == .local_time);
                             try std.testing.expectEqual(expected.local_time, actual_dt);
                         },
-                        else => {
-                            try std.testing.expectEqual(expected, actual);
-                        },
+                        else => try std.testing.expectEqual(expected, actual),
                     }
                 },
             }
