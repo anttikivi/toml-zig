@@ -1,3 +1,68 @@
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+const assert = std.debug.assert;
+
+/// Sentinel value for empty hash buckets.
+pub const empty_bucket: u32 = std.math.maxInt(u32);
+
+pub fn HashIndex(comptime E: type) type {
+    return struct {
+        buckets: []u32,
+        mask: u32,
+
+        const Index = @This();
+
+        pub fn init(gpa: Allocator, entries: []const E, capacity: usize) Allocator.Error!Index {
+            assert(std.math.isPowerOfTwo(capacity));
+            assert(entries.len <= capacity / 2);
+
+            const buckets = try gpa.alloc(u32, capacity);
+            @memset(buckets, empty_bucket);
+
+            const mask = capacity - 1;
+
+            for (entries, 0..) |entry, i| {
+                const hash = std.hash.Wyhash.hash(0, entry.key);
+                var bucket = hash & mask;
+                while (buckets[bucket] != empty_bucket) {
+                    bucket = (bucket + 1) & mask;
+                }
+                buckets[bucket] = i;
+            }
+
+            return .{
+                .buckets = buckets,
+                .mask = mask,
+            };
+        }
+
+        pub fn deinit(self: Index, gpa: Allocator) void {
+            gpa.free(self.buckets);
+        }
+
+        pub fn lookup(self: Index, entries: []const E, key: []const u8) ?usize {
+            const hash = std.hash.Wyhash.hash(0, key);
+            var bucket = hash & self.mask;
+            var i = 0;
+
+            while (i < self.mask) : (i += 1) {
+                const j = self.buckets[bucket];
+                if (j == empty_bucket) {
+                    return null;
+                }
+
+                if (std.mem.eql(u8, entries[j].key, key)) {
+                    return j;
+                }
+
+                bucket = (bucket + 1) & self.mask;
+            }
+
+            return null;
+        }
+    };
+}
+
 pub const Datetime = struct {
     year: u16,
     month: u8,
