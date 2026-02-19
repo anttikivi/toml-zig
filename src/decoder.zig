@@ -99,7 +99,7 @@ pub fn decode(gpa: Allocator, input: []const u8, options: DecodeOptions) !Parsed
     const owned_input = if (options.borrow_input) input else try allocator.dupe(u8, input);
 
     const parser: Parser = .init(allocator, gpa, owned_input, options);
-    _ = parser;
+    _ = try parser.parse();
 
     return .{
         .arena = arena,
