@@ -22,36 +22,7 @@ cursor: usize = 0,
 line: usize = 1,
 diagnostics: ?*Diagnostics = null,
 
-const Error = Allocator.Error || std.fmt.ParseIntError || std.fmt.ParseFloatError || error{
-    InvalidControlCharacter,
-    InvalidDatetime,
-    InvalidEscapeSequence,
-    InvalidNumber,
-    UnexpectedToken,
-    UnterminatedString,
-    Reported,
-};
-
-/// Feature flags that determine which TOML features that have changed since
-/// 1.0.0 are supported.
-const Features = packed struct {
-    escape_e: bool = false,
-    escape_xhh: bool = false,
-    optional_seconds: bool = false,
-
-    fn init(toml_version: TomlVersion) @This() {
-        return switch (toml_version) {
-            .@"1.0.0" => .{},
-            .@"1.1.0" => .{
-                .escape_e = true,
-                .escape_xhh = true,
-                .optional_seconds = true,
-            },
-        };
-    }
-};
-
-const Token = union(enum) {
+pub const Token = union(enum) {
     dot,
     equal,
     comma,
@@ -79,6 +50,35 @@ const Token = union(enum) {
 
     line_feed,
     end_of_file,
+};
+
+const Error = Allocator.Error || std.fmt.ParseIntError || std.fmt.ParseFloatError || error{
+    InvalidControlCharacter,
+    InvalidDatetime,
+    InvalidEscapeSequence,
+    InvalidNumber,
+    UnexpectedToken,
+    UnterminatedString,
+    Reported,
+};
+
+/// Feature flags that determine which TOML features that have changed since
+/// 1.0.0 are supported.
+const Features = packed struct {
+    escape_e: bool = false,
+    escape_xhh: bool = false,
+    optional_seconds: bool = false,
+
+    fn init(toml_version: TomlVersion) @This() {
+        return switch (toml_version) {
+            .@"1.0.0" => .{},
+            .@"1.1.0" => .{
+                .escape_e = true,
+                .escape_xhh = true,
+                .optional_seconds = true,
+            },
+        };
+    }
 };
 
 pub fn init(gpa: Allocator, input: []const u8, opts: DecodeOptions) Scanner {
@@ -1027,8 +1027,8 @@ fn skipLineEndingWhitespace(self: *Scanner) !void {
 /// the given error.
 fn fail(self: *const Scanner, opts: struct { @"error": Error, msg: ?[]const u8 = null }) Error {
     assert(opts.@"error" != error.InvalidCharacter);
-    assert(opts.@"error" != error.Reported);
     assert(opts.@"error" != error.OutOfMemory);
+    assert(opts.@"error" != error.Reported);
 
     if (self.diagnostics) |d| {
         const msg = if (opts.msg) |m| m else switch (opts.@"error") {
