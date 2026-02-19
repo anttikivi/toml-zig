@@ -23,7 +23,7 @@ diagnostics: ?*Diagnostics = null,
 const Error = Scanner.Error || error{
     Utf8CannotEncodeSurrogateHalf,
     CodepointTooLarge,
-} || error{ ExtendedInlineTable, RedefinedTable };
+} || error{ ExtendedInlineArray, ExtendedInlineTable, InvalidTable };
 
 const ParsingFlag = struct {
     inlined: bool = false,
@@ -148,6 +148,7 @@ pub fn parse(self: *Parser) Error!ParsingTable {
             .end_of_file => break,
             .line_feed => continue,
             .left_bracket => current = try self.parseTableHeader(&root),
+            .double_left_bracket => current = try self.parseArrayTableHeader(&root),
             else => self.fail(.{ .@"error" = error.UnexpectedToken }),
         }
     }
@@ -175,13 +176,13 @@ fn parseTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable {
         switch (existing.value) {
             .table => |*t| {
                 if (existing.flag.explicit or existing.flag.inlined or !existing.flag.standard) {
-                    return self.fail(.{ .@"error" = error.RedefinedTable });
+                    return self.fail(.{ .@"error" = error.InvalidTable });
                 }
 
                 existing.flag.explicit = true;
                 return t;
             },
-            else => return self.fail(.{ .@"error" = error.RedefinedTable }),
+            else => return self.fail(.{ .@"error" = error.InvalidTable }),
         }
     }
 
@@ -197,6 +198,80 @@ fn parseTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable {
 
     const ptr = table.getPtr(last_key).?;
     return &ptr.value.table;
+}
+
+fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable {
+    const keys = try self.parseKey(try self.scanner.nextKey());
+
+    var tok = try self.scanner.nextKey();
+    if (tok != .double_right_bracket) {
+        return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected two right square brackets" });
+    }
+
+    tok = try self.scanner.nextKey();
+    if (tok != .line_feed and tok != .end_of_file) {
+        return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected newline after table header" });
+    }
+
+    const last_key = keys[keys.len - 1];
+    var table = root;
+
+    for (keys[0 .. keys.len - 1]) |key| {
+        if (table.getPtr(key)) |existing| {
+            switch (existing.value) {
+                .table => |*t| {
+                    table = t;
+                },
+                .array => |*arr| {
+                    if (existing.flag.inlined) {
+                        return self.fail(.{ .@"error" = error.ExtendedInlineArray });
+                    }
+
+                    if (arr.items.len == 0) {
+                        return self.fail(.{ .@"error" = error.UnexpectedToken });
+                    }
+
+                    switch (arr.items[arr.items.len - 1]) {
+                        .table => |*t| table = t,
+                        else => return self.fail(.{ .@"error" = error.InvalidTable }),
+                    }
+                },
+                else => return self.fail(.{ .@"error" = error.InvalidTable }),
+            }
+        } else {
+            const new_table: ParsingTable = .{ .flag = .{ .standard = true } };
+            try table.put(self.arena, try self.arena.dupe(u8, key), .{
+                .flag = .{ .standard = true },
+                .value = .{ .table = new_table },
+            });
+
+            const ptr = table.getPtr(key).?;
+            table = &ptr.value.table;
+        }
+    }
+
+    if (table.getPtr(last_key)) |existing| {
+        switch (existing.value) {
+            .array => |arr| {
+                if (existing.flag.inlined) {
+                    return self.fail(.{ .@"error" = error.ExtendedInlineArray });
+                }
+
+                try arr.append(self.arena, .{ .value = .{ .table = .{} } });
+
+                return &arr.items[arr.items.len - 1].value.table;
+            },
+            else => return self.fail(.{ .@"error" = error.InvalidTable }),
+        }
+    }
+
+    const arr: ArrayList(ParsingValue) = .empty;
+    try arr.append(self.arena, .{ .value = .{ .table = .{} } });
+    try table.put(self.arena, try self.arena.dupe(u8, last_key), .{ .value = .{ .array = arr } });
+    const ptr = table.getPtr(last_key).?;
+    const array_ptr = &ptr.value.array;
+    const last = &array_ptr.items[array_ptr.items.len - 1];
+    return &last.value.table;
 }
 
 fn parseKey(self: *Parser, first: Token) Error![][]const u8 {
@@ -247,7 +322,7 @@ fn descendToTable(self: *Parser, keys: [][]const u8, root: *ParsingTable, is_sta
                     const last = &arr[arr.items.len - 1];
                     switch (last.value) {
                         .table => |*t| table = t,
-                        else => return self.fail(.{ .@"error" = error.RedefinedTable }),
+                        else => return self.fail(.{ .@"error" = error.InvalidTable }),
                     }
                 },
                 // TODO: Not so sure which error to choose here, but that's what
@@ -398,9 +473,10 @@ fn fail(self: *const Parser, opts: struct { @"error": Error, msg: ?[]const u8 = 
 
     if (self.diagnostics) |d| {
         const msg = if (opts.msg) |m| m else switch (opts.@"error") {
+            error.ExtendedInlineArray => "extended inline table",
             error.ExtendedInlineTable => "extended inline table",
             error.InvalidEscapeSequence => "invalid escape sequence",
-            error.RedefinedTable => "invalid redefinition of table",
+            error.InvalidTable => "invalid table definition",
             error.UnexpectedToken => "unexpected token",
             error.Reported => unreachable,
         };
