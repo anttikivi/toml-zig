@@ -861,8 +861,8 @@ fn expectString(table: *const Table, key: []const u8, expected: []const u8) !voi
         @compileError("expectString may only be used in tests");
     }
 
-    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = table.get(key) orelse return error.TestExpectedEqual;
+    switch (val) {
         .string => |s| try std.testing.expectEqualStrings(expected, s),
         else => return error.TestExpectedEqual,
     }
@@ -873,8 +873,8 @@ fn expectInt(table: *const Table, key: []const u8, expected: i64) !void {
         @compileError("expectInt may only be used in tests");
     }
 
-    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = table.get(key) orelse return error.TestExpectedEqual;
+    switch (val) {
         .int => |i| try std.testing.expectEqual(expected, i),
         else => return error.TestExpectedEqual,
     }
@@ -885,8 +885,8 @@ fn expectFloat(table: *const Table, key: []const u8, expected: f64) !void {
         @compileError("expectFloat may only be used in tests");
     }
 
-    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = table.get(key) orelse return error.TestExpectedEqual;
+    switch (val) {
         .float => |f| try std.testing.expectEqual(expected, f),
         else => return error.TestExpectedEqual,
     }
@@ -897,8 +897,8 @@ fn expectBool(table: *const Table, key: []const u8, expected: bool) !void {
         @compileError("expectBool may only be used in tests");
     }
 
-    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = table.get(key) orelse return error.TestExpectedEqual;
+    switch (val) {
         .bool => |b| try std.testing.expectEqual(expected, b),
         else => return error.TestExpectedEqual,
     }
@@ -909,8 +909,8 @@ fn expectDatetime(table: *const Table, key: []const u8, expected: Datetime) !voi
         @compileError("expectDatetime may only be used in tests");
     }
 
-    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = table.get(key) orelse return error.TestExpectedEqual;
+    switch (val) {
         .datetime => |dt| try std.testing.expect(expected.eql(dt)),
         else => return error.TestExpectedEqual,
     }
@@ -921,8 +921,8 @@ fn expectLocalDatetime(table: *const Table, key: []const u8, expected: Datetime)
         @compileError("expectLocalDatetime may only be used in tests");
     }
 
-    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = table.get(key) orelse return error.TestExpectedEqual;
+    switch (val) {
         .local_datetime => |dt| try std.testing.expect(expected.eql(dt)),
         else => return error.TestExpectedEqual,
     }
@@ -933,8 +933,8 @@ fn expectLocalDate(table: *const Table, key: []const u8, expected: Date) !void {
         @compileError("expectLocalDate may only be used in tests");
     }
 
-    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = table.get(key) orelse return error.TestExpectedEqual;
+    switch (val) {
         .local_date => |d| try std.testing.expect(expected.eql(d)),
         else => return error.TestExpectedEqual,
     }
@@ -945,8 +945,8 @@ fn expectLocalTime(table: *const Table, key: []const u8, expected: Time) !void {
         @compileError("expectLocalTime may only be used in tests");
     }
 
-    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = table.get(key) orelse return error.TestExpectedEqual;
+    switch (val) {
         .local_time => |t| try std.testing.expect(expected.eql(t)),
         else => return error.TestExpectedEqual,
     }
@@ -969,8 +969,8 @@ fn expectArray(table: *const Table, key: []const u8) ![]const Value {
         @compileError("expectArray may only be used in tests");
     }
 
-    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = table.get(key) orelse return error.TestExpectedEqual;
+    switch (val) {
         .array => |arr| return arr,
         else => return error.TestExpectedEqual,
     }
@@ -985,7 +985,8 @@ fn expectArrayTable(arr: []const Value, index: usize) !*const Table {
         return error.TestExpectedEqual;
     }
 
-    switch (arr[index]) {
+    const val = &arr[index];
+    switch (val.*) {
         .table => |*t| return t,
         else => return error.TestExpectedEqual,
     }
@@ -1252,8 +1253,8 @@ test "parse nan" {
         \\
     );
     defer result.deinit();
-    const val = result.root.getPtr("val") orelse return error.TestExpectedEqual;
-    switch (val.*) {
+    const val = result.root.get("val") orelse return error.TestExpectedEqual;
+    switch (val) {
         .float => |f| try std.testing.expect(std.math.isNan(f)),
         else => return error.TestExpectedEqual,
     }
