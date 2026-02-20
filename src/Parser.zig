@@ -856,212 +856,212 @@ fn testParseFailsWithOpts(input: []const u8, opts: DecodeOptions, expected_err: 
     try std.testing.expectError(expected_err, parser.parse());
 }
 
-fn expectString(table: *ParsingTable, key: []const u8, expected: []const u8) !void {
+fn expectString(table: *const Table, key: []const u8, expected: []const u8) !void {
     if (!builtin.is_test) {
         @compileError("expectString may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .string => |s| try std.testing.expectEqualStrings(expected, s),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectInt(table: *ParsingTable, key: []const u8, expected: i64) !void {
+fn expectInt(table: *const Table, key: []const u8, expected: i64) !void {
     if (!builtin.is_test) {
         @compileError("expectInt may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .int => |i| try std.testing.expectEqual(expected, i),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectFloat(table: *ParsingTable, key: []const u8, expected: f64) !void {
+fn expectFloat(table: *const Table, key: []const u8, expected: f64) !void {
     if (!builtin.is_test) {
         @compileError("expectFloat may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .float => |f| try std.testing.expectEqual(expected, f),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectBool(table: *ParsingTable, key: []const u8, expected: bool) !void {
+fn expectBool(table: *const Table, key: []const u8, expected: bool) !void {
     if (!builtin.is_test) {
         @compileError("expectBool may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .bool => |b| try std.testing.expectEqual(expected, b),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectDatetime(table: *ParsingTable, key: []const u8, expected: Datetime) !void {
+fn expectDatetime(table: *const Table, key: []const u8, expected: Datetime) !void {
     if (!builtin.is_test) {
         @compileError("expectDatetime may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .datetime => |dt| try std.testing.expect(expected.eql(dt)),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectLocalDatetime(table: *ParsingTable, key: []const u8, expected: Datetime) !void {
+fn expectLocalDatetime(table: *const Table, key: []const u8, expected: Datetime) !void {
     if (!builtin.is_test) {
         @compileError("expectLocalDatetime may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .local_datetime => |dt| try std.testing.expect(expected.eql(dt)),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectLocalDate(table: *ParsingTable, key: []const u8, expected: Date) !void {
+fn expectLocalDate(table: *const Table, key: []const u8, expected: Date) !void {
     if (!builtin.is_test) {
         @compileError("expectLocalDate may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .local_date => |d| try std.testing.expect(expected.eql(d)),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectLocalTime(table: *ParsingTable, key: []const u8, expected: Time) !void {
+fn expectLocalTime(table: *const Table, key: []const u8, expected: Time) !void {
     if (!builtin.is_test) {
         @compileError("expectLocalTime may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .local_time => |t| try std.testing.expect(expected.eql(t)),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectTable(table: *ParsingTable, key: []const u8) !*ParsingTable {
+fn expectTable(table: *const Table, key: []const u8) !*const Table {
     if (!builtin.is_test) {
         @compileError("expectTable may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .table => |*t| return t,
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectArray(table: *ParsingTable, key: []const u8) !*ParsingArray {
+fn expectArray(table: *const Table, key: []const u8) ![]const Value {
     if (!builtin.is_test) {
         @compileError("expectArray may only be used in tests");
     }
 
     const val = table.getPtr(key) orelse return error.TestExpectedEqual;
-    switch (val.value) {
-        .array => |*arr| return arr,
+    switch (val.*) {
+        .array => |arr| return arr,
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectArrayTable(arr: *ParsingArray, index: usize) !*ParsingTable {
+fn expectArrayTable(arr: []const Value, index: usize) !*const Table {
     if (!builtin.is_test) {
         @compileError("expectArrayTable may only be used in tests");
     }
 
-    if (index >= arr.items.len) {
+    if (index >= arr.len) {
         return error.TestExpectedEqual;
     }
 
-    switch (arr.items[index].value) {
+    switch (arr[index]) {
         .table => |*t| return t,
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectArrayString(arr: *ParsingArray, index: usize, expected: []const u8) !void {
+fn expectArrayString(arr: []const Value, index: usize, expected: []const u8) !void {
     if (!builtin.is_test) {
         @compileError("expectArrayString may only be used in tests");
     }
 
-    if (index >= arr.items.len) {
+    if (index >= arr.len) {
         return error.TestExpectedEqual;
     }
 
-    switch (arr.items[index].value) {
+    switch (arr[index]) {
         .string => |s| try std.testing.expectEqualStrings(expected, s),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectArrayInt(arr: *ParsingArray, index: usize, expected: i64) !void {
+fn expectArrayInt(arr: []const Value, index: usize, expected: i64) !void {
     if (!builtin.is_test) {
         @compileError("expectArrayInt may only be used in tests");
     }
 
-    if (index >= arr.items.len) {
+    if (index >= arr.len) {
         return error.TestExpectedEqual;
     }
 
-    switch (arr.items[index].value) {
+    switch (arr[index]) {
         .int => |i| try std.testing.expectEqual(expected, i),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectArrayFloat(arr: *ParsingArray, index: usize, expected: f64) !void {
+fn expectArrayFloat(arr: []const Value, index: usize, expected: f64) !void {
     if (!builtin.is_test) {
         @compileError("expectArrayFloat may only be used in tests");
     }
 
-    if (index >= arr.items.len) {
+    if (index >= arr.len) {
         return error.TestExpectedEqual;
     }
 
-    switch (arr.items[index].value) {
+    switch (arr[index]) {
         .float => |f| try std.testing.expectEqual(expected, f),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectArrayBool(arr: *ParsingArray, index: usize, expected: bool) !void {
+fn expectArrayBool(arr: []const Value, index: usize, expected: bool) !void {
     if (!builtin.is_test) {
         @compileError("expectArrayBool may only be used in tests");
     }
 
-    if (index >= arr.items.len) {
+    if (index >= arr.len) {
         return error.TestExpectedEqual;
     }
 
-    switch (arr.items[index].value) {
+    switch (arr[index]) {
         .bool => |b| try std.testing.expectEqual(expected, b),
         else => return error.TestExpectedEqual,
     }
 }
 
-fn expectArrayArray(arr: *ParsingArray, index: usize) !*ParsingArray {
+fn expectArrayArray(arr: []const Value, index: usize) ![]const Value {
     if (!builtin.is_test) {
         @compileError("expectArrayArray may only be used in tests");
     }
 
-    if (index >= arr.items.len) {
+    if (index >= arr.len) {
         return error.TestExpectedEqual;
     }
 
-    switch (arr.items[index].value) {
-        .array => |*a| return a,
+    switch (arr[index]) {
+        .array => |a| return a,
         else => return error.TestExpectedEqual,
     }
 }
@@ -1253,7 +1253,7 @@ test "parse nan" {
     );
     defer result.deinit();
     const val = result.root.getPtr("val") orelse return error.TestExpectedEqual;
-    switch (val.value) {
+    switch (val.*) {
         .float => |f| try std.testing.expect(std.math.isNan(f)),
         else => return error.TestExpectedEqual,
     }
@@ -1383,7 +1383,7 @@ test "parse multiple key-value pairs" {
     try expectString(&result.root, "name", "Tom");
     try expectInt(&result.root, "age", 30);
     try expectBool(&result.root, "active", true);
-    try std.testing.expectEqual(@as(usize, 3), result.root.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 3), result.root.entries.len);
 }
 
 test "parse key-value pairs with comments" {
@@ -1561,7 +1561,7 @@ test "parse array table" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "products");
-    try std.testing.expectEqual(@as(usize, 2), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 2), arr.len);
     const t0 = try expectArrayTable(arr, 0);
     try expectString(t0, "name", "Hammer");
     const t1 = try expectArrayTable(arr, 1);
@@ -1579,7 +1579,7 @@ test "parse nested array table" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "fruits");
-    try std.testing.expectEqual(@as(usize, 2), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 2), arr.len);
     const t0 = try expectArrayTable(arr, 0);
     try expectString(t0, "name", "apple");
     const t1 = try expectArrayTable(arr, 1);
@@ -1597,7 +1597,7 @@ test "parse array table with sub-tables" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "fruits");
-    try std.testing.expectEqual(@as(usize, 1), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 1), arr.len);
     const t0 = try expectArrayTable(arr, 0);
     try expectString(t0, "name", "apple");
     const phys = try expectTable(t0, "physical");
@@ -1611,7 +1611,7 @@ test "parse empty inline array" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "arr");
-    try std.testing.expectEqual(@as(usize, 0), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 0), arr.len);
 }
 
 test "parse inline array of integers" {
@@ -1621,7 +1621,7 @@ test "parse inline array of integers" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "arr");
-    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 3), arr.len);
     try expectArrayInt(arr, 0, 1);
     try expectArrayInt(arr, 1, 2);
     try expectArrayInt(arr, 2, 3);
@@ -1634,7 +1634,7 @@ test "parse inline array of strings" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "arr");
-    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 3), arr.len);
     try expectArrayString(arr, 0, "a");
     try expectArrayString(arr, 1, "b");
     try expectArrayString(arr, 2, "c");
@@ -1647,7 +1647,7 @@ test "parse inline array with trailing comma" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "arr");
-    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 3), arr.len);
 }
 
 test "parse inline array with newlines" {
@@ -1661,7 +1661,7 @@ test "parse inline array with newlines" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "arr");
-    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 3), arr.len);
     try expectArrayInt(arr, 0, 1);
     try expectArrayInt(arr, 1, 2);
     try expectArrayInt(arr, 2, 3);
@@ -1674,7 +1674,7 @@ test "parse nested inline arrays" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "arr");
-    try std.testing.expectEqual(@as(usize, 2), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 2), arr.len);
     const inner0 = try expectArrayArray(arr, 0);
     try expectArrayInt(inner0, 0, 1);
     try expectArrayInt(inner0, 1, 2);
@@ -1690,7 +1690,7 @@ test "parse mixed-type inline array" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "arr");
-    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 3), arr.len);
     try expectArrayInt(arr, 0, 1);
     try expectArrayString(arr, 1, "two");
     try expectArrayBool(arr, 2, true);
@@ -1703,7 +1703,7 @@ test "parse empty inline table" {
     );
     defer result.deinit();
     const tbl = try expectTable(&result.root, "tbl");
-    try std.testing.expectEqual(@as(usize, 0), tbl.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), tbl.entries.len);
 }
 
 test "parse inline table with values" {
@@ -1917,7 +1917,7 @@ test "parse complex document" {
     try expectBool(db, "enabled", true);
 
     const ports = try expectArray(db, "ports");
-    try std.testing.expectEqual(@as(usize, 3), ports.items.len);
+    try std.testing.expectEqual(@as(usize, 3), ports.len);
     try expectArrayInt(ports, 0, 8001);
     try expectArrayInt(ports, 1, 8001);
     try expectArrayInt(ports, 2, 8002);
@@ -1942,7 +1942,7 @@ test "parse document with array tables and sub-tables" {
     );
     defer result.deinit();
     const arr = try expectArray(&result.root, "fruits");
-    try std.testing.expectEqual(@as(usize, 2), arr.items.len);
+    try std.testing.expectEqual(@as(usize, 2), arr.len);
 
     const apple = try expectArrayTable(arr, 0);
     try expectString(apple, "name", "apple");

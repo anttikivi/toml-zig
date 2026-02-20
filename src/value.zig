@@ -237,6 +237,24 @@ pub const Table = struct {
 
         return null;
     }
+
+    pub fn getPtr(self: *const Self, key: []const u8) ?*const Value {
+        if (self.index) |index| {
+            if (index.lookup(self.entries, key)) |i| {
+                return &self.entries[i].value;
+            }
+
+            return null;
+        }
+
+        for (self.entries) |*entry| {
+            if (std.mem.eql(u8, entry.key, key)) {
+                return &entry.value;
+            }
+        }
+
+        return null;
+    }
 };
 
 fn isValidTimezone(tz: i16) bool {
