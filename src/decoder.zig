@@ -3,6 +3,7 @@ const Allocator = std.mem.Allocator;
 
 const Parser = @import("Parser.zig");
 const TomlVersion = @import("root.zig").TomlVersion;
+const Table = @import("value.zig").Table;
 
 pub const DecodeOptions = struct {
     /// Optional diagnostics object that contains additional information if
@@ -79,10 +80,16 @@ const Utf8Error = Allocator.Error || error{ InvalidUtf8, Reported };
 
 const Parsed = struct {
     arena: std.heap.ArenaAllocator,
+    root: Table,
 
     // The input buffer of the parsed TOML document. It is either borrowed or
     // owned by the arena depending on `DecodeOptions`.
     // input: []const u8,
+
+    pub fn deinit(self: *@This()) void {
+        self.arena.deinit();
+        self.* = undefined;
+    }
 };
 
 pub fn decode(gpa: Allocator, input: []const u8, options: DecodeOptions) !Parsed {
@@ -94,10 +101,11 @@ pub fn decode(gpa: Allocator, input: []const u8, options: DecodeOptions) !Parsed
     }
 
     var parser: Parser = .init(allocator, gpa, input, options);
-    _ = try parser.parse();
+    const root = try parser.parse();
 
     return .{
         .arena = arena,
+        .root = root,
         // .input = owned_input,
     };
 }
