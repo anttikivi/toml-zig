@@ -52,7 +52,7 @@ pub const Token = union(enum) {
     end_of_file,
 };
 
-const Error = Allocator.Error || std.fmt.ParseIntError || std.fmt.ParseFloatError || error{
+pub const Error = Allocator.Error || std.fmt.ParseIntError || std.fmt.ParseFloatError || error{
     InvalidControlCharacter,
     InvalidDatetime,
     InvalidEscapeSequence,

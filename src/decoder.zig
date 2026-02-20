@@ -93,7 +93,7 @@ pub fn decode(gpa: Allocator, input: []const u8, options: DecodeOptions) !Parsed
         try validateUtf8(gpa, input, options.diagnostics);
     }
 
-    const parser: Parser = .init(allocator, gpa, input, options);
+    var parser: Parser = .init(allocator, gpa, input, options);
     _ = try parser.parse();
 
     return .{

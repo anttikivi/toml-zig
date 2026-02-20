@@ -1,6 +1,7 @@
 const Parser = @This();
 
 const build_options = @import("build_options");
+const builtin = @import("builtin");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
@@ -100,7 +101,7 @@ const ParsingTable = struct {
             return null;
         }
 
-        for (self.entries.items) |entry| {
+        for (self.entries.items) |*entry| {
             if (std.mem.eql(u8, entry.key, key)) {
                 return &entry.value;
             }
@@ -131,7 +132,7 @@ const ParsingTable = struct {
         if (self.index) |*index| {
             try self.growIfNeeded(gpa);
 
-            const i = self.entries.items.len - 1;
+            const i: u32 = @intCast(self.entries.items.len - 1);
             const hash = std.hash.Wyhash.hash(0, key);
 
             var bucket = hash & index.mask;
@@ -141,7 +142,7 @@ const ParsingTable = struct {
 
             index.buckets[bucket] = i;
         } else {
-            self.ensureIndex(gpa);
+            try self.ensureIndex(gpa);
         }
     }
 };
@@ -154,8 +155,8 @@ pub fn init(arena: Allocator, gpa: Allocator, input: []const u8, opts: DecodeOpt
 }
 
 pub fn parse(self: *Parser) Error!ParsingTable {
-    const root: ParsingTable = .{};
-    const current: *ParsingTable = &root;
+    var root: ParsingTable = .{};
+    var current = &root;
 
     while (self.scanner.cursor < self.scanner.input.len) {
         const token = try self.scanner.nextKey();
@@ -166,7 +167,7 @@ pub fn parse(self: *Parser) Error!ParsingTable {
             .left_bracket => current = try self.parseTableHeader(&root),
             .double_left_bracket => current = try self.parseArrayTableHeader(&root),
             .literal, .string, .literal_string => try self.parseKeyValue(token, current),
-            else => self.fail(.{ .@"error" = error.UnexpectedToken }),
+            else => return self.fail(.{ .@"error" = error.UnexpectedToken }),
         }
     }
 
@@ -192,7 +193,11 @@ fn parseTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable {
     if (table.getPtr(last_key)) |existing| {
         switch (existing.value) {
             .table => |*t| {
-                if (existing.flag.explicit or existing.flag.inlined or !existing.flag.standard) {
+                if (existing.flag.inlined) {
+                    return self.fail(.{ .@"error" = error.ExtendedInlineTable });
+                }
+
+                if (existing.flag.explicit or !existing.flag.standard) {
                     return self.fail(.{ .@"error" = error.InvalidTable });
                 }
 
@@ -248,7 +253,7 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
                         return self.fail(.{ .@"error" = error.UnexpectedToken });
                     }
 
-                    switch (arr.items[arr.items.len - 1]) {
+                    switch (arr.items[arr.items.len - 1].value) {
                         .table => |*t| table = t,
                         else => return self.fail(.{ .@"error" = error.InvalidTable }),
                     }
@@ -269,7 +274,7 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
 
     if (table.getPtr(last_key)) |existing| {
         switch (existing.value) {
-            .array => |arr| {
+            .array => |*arr| {
                 if (existing.flag.inlined) {
                     return self.fail(.{ .@"error" = error.ExtendedInlineArray });
                 }
@@ -282,7 +287,7 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
         }
     }
 
-    const arr: ParsingArray = .empty;
+    var arr: ParsingArray = .empty;
     try arr.append(self.arena, .{ .value = .{ .table = .{} } });
     try table.put(self.arena, try self.arena.dupe(u8, last_key), .{ .value = .{ .array = arr } });
     const ptr = table.getPtr(last_key).?;
@@ -317,7 +322,7 @@ fn parseKeyValue(self: *Parser, first_token: Token, current_table: *ParsingTable
                 return self.fail(.{ .@"error" = error.InvalidTable });
             }
 
-            try table.put(self.arena, try self.arena.dupe(u8, key), .{ .value = .{} });
+            try table.put(self.arena, try self.arena.dupe(u8, key), .{ .value = .{ .table = .{} } });
 
             const ptr = table.getPtr(key).?;
             table = &ptr.value.table;
@@ -340,9 +345,28 @@ fn parseKeyValue(self: *Parser, first_token: Token, current_table: *ParsingTable
     const val = try self.parseValue(token);
     try table.put(self.arena, try self.arena.dupe(u8, final_key), val);
 
-    token = self.scanner.nextKey();
+    // After parsing the value, verify the line ends properly. A comment
+    // after the value consumes the newline in the scanner, so we may get
+    // the next line's first token instead of line_feed. In that case, we
+    // push back by restoring the cursor.
+    const cursor = self.scanner.cursor;
+    const line = self.scanner.line;
+    token = try self.scanner.nextKey();
     if (token != .line_feed and token != .end_of_file) {
-        return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected a newline after value" });
+        // Check if this could be the start of the next expression (meaning
+        // the newline was consumed by a comment). If so, push back.
+        switch (token) {
+            .literal,
+            .string,
+            .literal_string,
+            .left_bracket,
+            .double_left_bracket,
+            => {
+                self.scanner.cursor = cursor;
+                self.scanner.line = line;
+            },
+            else => return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected a newline after value" }),
+        }
     }
 }
 
@@ -351,8 +375,8 @@ fn parseKey(self: *Parser, first: Token) Error![][]const u8 {
 
     const first_part = switch (first) {
         .literal, .literal_string => |s| s,
-        .string => |s| self.normalizeString(s, false),
-        else => self.fail(.{ .@"error" = error.UnexpectedToken }),
+        .string => |s| try self.normalizeString(s, false),
+        else => return self.fail(.{ .@"error" = error.UnexpectedToken }),
     };
     try parts.append(self.arena, first_part);
 
@@ -370,8 +394,8 @@ fn parseKey(self: *Parser, first: Token) Error![][]const u8 {
         const tok = try self.scanner.nextKey();
         const next = switch (tok) {
             .literal, .literal_string => |s| s,
-            .string => |s| self.normalizeString(s, false),
-            else => self.fail(.{ .@"error" = error.UnexpectedToken }),
+            .string => |s| try self.normalizeString(s, false),
+            else => return self.fail(.{ .@"error" = error.UnexpectedToken }),
         };
         try parts.append(self.arena, next);
     }
@@ -381,8 +405,8 @@ fn parseKey(self: *Parser, first: Token) Error![][]const u8 {
 
 fn parseValue(self: *Parser, token: Token) Error!ParsingValue {
     return switch (token) {
-        .string => |s| .{ .value = .{ .string = self.normalizeString(s, false) } },
-        .multiline_string => |s| .{ .value = .{ .string = self.normalizeString(s, true) } },
+        .string => |s| .{ .value = .{ .string = try self.normalizeString(s, false) } },
+        .multiline_string => |s| .{ .value = .{ .string = try self.normalizeString(s, true) } },
         .literal_string, .multiline_literal_string => |s| .{ .value = .{ .string = s } },
         .int => |i| .{ .value = .{ .int = i } },
         .float => |f| .{ .value = .{ .float = f } },
@@ -402,7 +426,7 @@ fn parseInlineArray(self: *Parser) Error!ParsingValue {
     var need_comma = false;
 
     while (true) {
-        var token = try self.scanner.nexValue();
+        var token = try self.scanner.nextValue();
         while (token == .line_feed) {
             token = try self.scanner.nextValue();
         }
@@ -429,7 +453,7 @@ fn parseInlineArray(self: *Parser) Error!ParsingValue {
         need_comma = true;
     }
 
-    var result: ParsingValue = .{};
+    var result: ParsingValue = .{ .value = .{ .array = arr } };
     setFlagRecursively(&result, .{ .inlined = true, .standard = false, .explicit = false });
     return result;
 }
@@ -487,7 +511,7 @@ fn parseInlineTable(self: *Parser) Error!ParsingValue {
             if (current.getPtr(key)) |existing| {
                 switch (existing.value) {
                     .table => |*t| {
-                        if (existing.table.explicit) {
+                        if (existing.flag.explicit) {
                             return self.fail(.{ .@"error" = error.InvalidTable });
                         }
 
@@ -537,7 +561,7 @@ fn descendToTable(self: *Parser, keys: [][]const u8, root: *ParsingTable, is_sta
                         return self.fail(.{ .@"error" = error.UnexpectedToken });
                     }
 
-                    const last = &arr[arr.items.len - 1];
+                    const last = &arr.items[arr.items.len - 1];
                     switch (last.value) {
                         .table => |*t| table = t,
                         else => return self.fail(.{ .@"error" = error.InvalidTable }),
@@ -618,13 +642,13 @@ fn normalizeString(self: *Parser, s: []const u8, multiline: bool) Error![]const 
                 try result.append(self.arena, 27);
                 i += 1;
             } else {
-                self.fail(.{ .@"error" = error.InvalidEscapeSequence });
+                return self.fail(.{ .@"error" = error.InvalidEscapeSequence });
             },
             // Same deal here.
             'x' => if (self.scanner.features.escape_xhh) {
                 i += 1;
 
-                if (i + 2 < s.len) {
+                if (i + 2 > s.len) {
                     return self.fail(.{ .@"error" = error.UnexpectedToken });
                 }
 
@@ -635,12 +659,12 @@ fn normalizeString(self: *Parser, s: []const u8, multiline: bool) Error![]const 
                 try result.appendSlice(self.arena, buf[0..n]);
                 i += 2;
             } else {
-                self.fail(.{ .@"error" = error.InvalidEscapeSequence });
+                return self.fail(.{ .@"error" = error.InvalidEscapeSequence });
             },
             'u' => {
                 i += 1;
 
-                if (i + 4 < s.len) {
+                if (i + 4 > s.len) {
                     return self.fail(.{ .@"error" = error.UnexpectedToken });
                 }
 
@@ -654,7 +678,7 @@ fn normalizeString(self: *Parser, s: []const u8, multiline: bool) Error![]const 
             'U' => {
                 i += 1;
 
-                if (i + 8 < s.len) {
+                if (i + 8 > s.len) {
                     return self.fail(.{ .@"error" = error.UnexpectedToken });
                 }
 
@@ -673,7 +697,7 @@ fn normalizeString(self: *Parser, s: []const u8, multiline: bool) Error![]const 
                 i += 1;
             },
             else => {
-                result.append(self.arena, c);
+                try result.append(self.arena, c);
                 i += 1;
             },
         }
@@ -686,18 +710,34 @@ fn normalizeString(self: *Parser, s: []const u8, multiline: bool) Error![]const 
 /// the appropriate information and returns `error.Reported` or returns
 /// the given error.
 fn fail(self: *const Parser, opts: struct { @"error": Error, msg: ?[]const u8 = null }) Error {
+    assert(opts.@"error" != error.InvalidControlCharacter);
+    assert(opts.@"error" != error.InvalidDatetime);
+    assert(opts.@"error" != error.InvalidNumber);
     assert(opts.@"error" != error.OutOfMemory);
+    assert(opts.@"error" != error.Overflow);
     assert(opts.@"error" != error.Reported);
+    assert(opts.@"error" != error.UnterminatedString);
 
     if (self.diagnostics) |d| {
         const msg = if (opts.msg) |m| m else switch (opts.@"error") {
             error.DuplicateKey => "duplicate key",
-            error.ExtendedInlineArray => "extended inline table",
+            error.ExtendedInlineArray => "extended inline array",
             error.ExtendedInlineTable => "extended inline table",
             error.InvalidEscapeSequence => "invalid escape sequence",
             error.InvalidTable => "invalid table definition",
             error.UnexpectedToken => "unexpected token",
-            error.Reported => unreachable,
+            error.Utf8CannotEncodeSurrogateHalf => "invalid unicode codepoint",
+            error.CodepointTooLarge => "codepoint too large",
+
+            error.InvalidCharacter,
+            error.InvalidControlCharacter,
+            error.InvalidDatetime,
+            error.InvalidNumber,
+            error.OutOfMemory,
+            error.Overflow,
+            error.Reported,
+            error.UnterminatedString,
+            => unreachable,
         };
         try d.initLineKnown(self.scanner.gpa, msg, self.scanner.input, self.scanner.cursor, self.scanner.line);
 
@@ -713,11 +753,11 @@ fn setFlagRecursively(val: *ParsingValue, flag: ParsingFlag) void {
     }
 
     if (flag.inlined) {
-        value.flag.inlined = true;
+        val.flag.inlined = true;
     }
 
     if (flag.standard) {
-        value.flag.standard = true;
+        val.flag.standard = true;
     }
 
     switch (val.value) {
@@ -729,4 +769,1169 @@ fn setFlagRecursively(val: *ParsingValue, flag: ParsingFlag) void {
         },
         else => {},
     }
+}
+
+const TestParseResult = struct {
+    arena: std.heap.ArenaAllocator,
+    root: ParsingTable,
+
+    fn deinit(self: *TestParseResult) void {
+        self.arena.deinit();
+    }
+};
+
+fn testParse(input: []const u8) !TestParseResult {
+    return testParseWithOpts(input, .{});
+}
+
+fn testParseWithOpts(input: []const u8, opts: DecodeOptions) !TestParseResult {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    errdefer arena.deinit();
+
+    var parser: Parser = .init(arena.allocator(), std.testing.allocator, input, opts);
+    const root = try parser.parse();
+    return .{ .arena = arena, .root = root };
+}
+
+fn testParseFails(input: []const u8, expected_err: Error) !void {
+    return testParseFailsWithOpts(input, .{}, expected_err);
+}
+
+fn testParseFailsWithOpts(input: []const u8, opts: DecodeOptions, expected_err: Error) !void {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var parser: Parser = .init(arena.allocator(), std.testing.allocator, input, opts);
+    try std.testing.expectError(expected_err, parser.parse());
+}
+
+fn expectString(table: *ParsingTable, key: []const u8, expected: []const u8) !void {
+    if (!builtin.is_test) {
+        @compileError("expectString may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .string => |s| try std.testing.expectEqualStrings(expected, s),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectInt(table: *ParsingTable, key: []const u8, expected: i64) !void {
+    if (!builtin.is_test) {
+        @compileError("expectInt may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .int => |i| try std.testing.expectEqual(expected, i),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectFloat(table: *ParsingTable, key: []const u8, expected: f64) !void {
+    if (!builtin.is_test) {
+        @compileError("expectFloat may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .float => |f| try std.testing.expectEqual(expected, f),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectBool(table: *ParsingTable, key: []const u8, expected: bool) !void {
+    if (!builtin.is_test) {
+        @compileError("expectBool may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .bool => |b| try std.testing.expectEqual(expected, b),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectDatetime(table: *ParsingTable, key: []const u8, expected: Datetime) !void {
+    if (!builtin.is_test) {
+        @compileError("expectDatetime may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .datetime => |dt| try std.testing.expect(expected.eql(dt)),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectLocalDatetime(table: *ParsingTable, key: []const u8, expected: Datetime) !void {
+    if (!builtin.is_test) {
+        @compileError("expectLocalDatetime may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .local_datetime => |dt| try std.testing.expect(expected.eql(dt)),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectLocalDate(table: *ParsingTable, key: []const u8, expected: Date) !void {
+    if (!builtin.is_test) {
+        @compileError("expectLocalDate may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .local_date => |d| try std.testing.expect(expected.eql(d)),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectLocalTime(table: *ParsingTable, key: []const u8, expected: Time) !void {
+    if (!builtin.is_test) {
+        @compileError("expectLocalTime may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .local_time => |t| try std.testing.expect(expected.eql(t)),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectTable(table: *ParsingTable, key: []const u8) !*ParsingTable {
+    if (!builtin.is_test) {
+        @compileError("expectTable may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .table => |*t| return t,
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectArray(table: *ParsingTable, key: []const u8) !*ParsingArray {
+    if (!builtin.is_test) {
+        @compileError("expectArray may only be used in tests");
+    }
+
+    const val = table.getPtr(key) orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .array => |*arr| return arr,
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectArrayTable(arr: *ParsingArray, index: usize) !*ParsingTable {
+    if (!builtin.is_test) {
+        @compileError("expectArrayTable may only be used in tests");
+    }
+
+    if (index >= arr.items.len) {
+        return error.TestExpectedEqual;
+    }
+
+    switch (arr.items[index].value) {
+        .table => |*t| return t,
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectArrayString(arr: *ParsingArray, index: usize, expected: []const u8) !void {
+    if (!builtin.is_test) {
+        @compileError("expectArrayString may only be used in tests");
+    }
+
+    if (index >= arr.items.len) {
+        return error.TestExpectedEqual;
+    }
+
+    switch (arr.items[index].value) {
+        .string => |s| try std.testing.expectEqualStrings(expected, s),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectArrayInt(arr: *ParsingArray, index: usize, expected: i64) !void {
+    if (!builtin.is_test) {
+        @compileError("expectArrayInt may only be used in tests");
+    }
+
+    if (index >= arr.items.len) {
+        return error.TestExpectedEqual;
+    }
+
+    switch (arr.items[index].value) {
+        .int => |i| try std.testing.expectEqual(expected, i),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectArrayFloat(arr: *ParsingArray, index: usize, expected: f64) !void {
+    if (!builtin.is_test) {
+        @compileError("expectArrayFloat may only be used in tests");
+    }
+
+    if (index >= arr.items.len) {
+        return error.TestExpectedEqual;
+    }
+
+    switch (arr.items[index].value) {
+        .float => |f| try std.testing.expectEqual(expected, f),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectArrayBool(arr: *ParsingArray, index: usize, expected: bool) !void {
+    if (!builtin.is_test) {
+        @compileError("expectArrayBool may only be used in tests");
+    }
+
+    if (index >= arr.items.len) {
+        return error.TestExpectedEqual;
+    }
+
+    switch (arr.items[index].value) {
+        .bool => |b| try std.testing.expectEqual(expected, b),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+fn expectArrayArray(arr: *ParsingArray, index: usize) !*ParsingArray {
+    if (!builtin.is_test) {
+        @compileError("expectArrayArray may only be used in tests");
+    }
+
+    if (index >= arr.items.len) {
+        return error.TestExpectedEqual;
+    }
+
+    switch (arr.items[index].value) {
+        .array => |*a| return a,
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "parse empty document" {
+    var result = try testParse("");
+    defer result.deinit();
+    try std.testing.expectEqual(@as(usize, 0), result.root.entries.items.len);
+}
+
+test "parse whitespace-only document" {
+    var result = try testParse("   \t  ");
+    defer result.deinit();
+    try std.testing.expectEqual(@as(usize, 0), result.root.entries.items.len);
+}
+
+test "parse newline-only document" {
+    var result = try testParse("\n\n\n");
+    defer result.deinit();
+    try std.testing.expectEqual(@as(usize, 0), result.root.entries.items.len);
+}
+
+test "parse comment-only document" {
+    var result = try testParse("# This is a comment\n# Another comment\n");
+    defer result.deinit();
+    try std.testing.expectEqual(@as(usize, 0), result.root.entries.items.len);
+}
+
+test "parse basic string value" {
+    var result = try testParse(
+        \\name = "Tom"
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "name", "Tom");
+}
+
+test "parse literal string value" {
+    var result = try testParse(
+        \\path = 'C:\Users\Tom'
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "path", "C:\\Users\\Tom");
+}
+
+test "parse empty string value" {
+    var result = try testParse(
+        \\empty = ""
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "empty", "");
+}
+
+test "parse multiline basic string value" {
+    var result = try testParse("msg = \"\"\"\nline1\nline2\n\"\"\"\n");
+    defer result.deinit();
+    try expectString(&result.root, "msg", "line1\nline2\n");
+}
+
+test "parse multiline literal string value" {
+    var result = try testParse("msg = '''\nline1\nline2\n'''\n");
+    defer result.deinit();
+    try expectString(&result.root, "msg", "line1\nline2\n");
+}
+
+test "parse integer value" {
+    var result = try testParse(
+        \\count = 42
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "count", 42);
+}
+
+test "parse negative integer value" {
+    var result = try testParse(
+        \\val = -17
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "val", -17);
+}
+
+test "parse positive integer value" {
+    var result = try testParse(
+        \\val = +99
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "val", 99);
+}
+
+test "parse zero integer" {
+    var result = try testParse(
+        \\val = 0
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "val", 0);
+}
+
+test "parse hex integer" {
+    var result = try testParse(
+        \\val = 0xff
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "val", 255);
+}
+
+test "parse octal integer" {
+    var result = try testParse(
+        \\val = 0o77
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "val", 63);
+}
+
+test "parse binary integer" {
+    var result = try testParse(
+        \\val = 0b11010110
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "val", 214);
+}
+
+test "parse integer with underscores" {
+    var result = try testParse(
+        \\val = 1_000_000
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "val", 1_000_000);
+}
+
+test "parse float value" {
+    var result = try testParse(
+        \\pi = 3.14
+        \\
+    );
+    defer result.deinit();
+    try expectFloat(&result.root, "pi", 3.14);
+}
+
+test "parse negative float value" {
+    var result = try testParse(
+        \\val = -0.01
+        \\
+    );
+    defer result.deinit();
+    try expectFloat(&result.root, "val", -0.01);
+}
+
+test "parse float with exponent" {
+    var result = try testParse(
+        \\val = 5e+22
+        \\
+    );
+    defer result.deinit();
+    try expectFloat(&result.root, "val", 5e+22);
+}
+
+test "parse inf" {
+    var result = try testParse(
+        \\val = inf
+        \\
+    );
+    defer result.deinit();
+    try expectFloat(&result.root, "val", std.math.inf(f64));
+}
+
+test "parse negative inf" {
+    var result = try testParse(
+        \\val = -inf
+        \\
+    );
+    defer result.deinit();
+    try expectFloat(&result.root, "val", -std.math.inf(f64));
+}
+
+test "parse nan" {
+    var result = try testParse(
+        \\val = nan
+        \\
+    );
+    defer result.deinit();
+    const val = result.root.getPtr("val") orelse return error.TestExpectedEqual;
+    switch (val.value) {
+        .float => |f| try std.testing.expect(std.math.isNan(f)),
+        else => return error.TestExpectedEqual,
+    }
+}
+
+test "parse true" {
+    var result = try testParse(
+        \\flag = true
+        \\
+    );
+    defer result.deinit();
+    try expectBool(&result.root, "flag", true);
+}
+
+test "parse false" {
+    var result = try testParse(
+        \\flag = false
+        \\
+    );
+    defer result.deinit();
+    try expectBool(&result.root, "flag", false);
+}
+
+test "parse offset datetime" {
+    var result = try testParse(
+        \\dt = 1979-05-27T07:32:00Z
+        \\
+    );
+    defer result.deinit();
+    try expectDatetime(&result.root, "dt", .{
+        .year = 1979,
+        .month = 5,
+        .day = 27,
+        .hour = 7,
+        .minute = 32,
+        .second = 0,
+        .nano = null,
+        .tz = 0,
+    });
+}
+
+test "parse offset datetime with offset" {
+    var result = try testParse(
+        \\dt = 1979-05-27T07:32:00-07:00
+        \\
+    );
+    defer result.deinit();
+    try expectDatetime(&result.root, "dt", .{
+        .year = 1979,
+        .month = 5,
+        .day = 27,
+        .hour = 7,
+        .minute = 32,
+        .second = 0,
+        .nano = null,
+        .tz = -7 * 60,
+    });
+}
+
+test "parse local datetime" {
+    var result = try testParse(
+        \\dt = 1979-05-27T07:32:00
+        \\
+    );
+    defer result.deinit();
+    try expectLocalDatetime(&result.root, "dt", .{
+        .year = 1979,
+        .month = 5,
+        .day = 27,
+        .hour = 7,
+        .minute = 32,
+        .second = 0,
+        .nano = null,
+        .tz = null,
+    });
+}
+
+test "parse local date" {
+    var result = try testParse(
+        \\d = 1979-05-27
+        \\
+    );
+    defer result.deinit();
+    try expectLocalDate(&result.root, "d", .{
+        .year = 1979,
+        .month = 5,
+        .day = 27,
+    });
+}
+
+test "parse local time" {
+    var result = try testParse(
+        \\t = 07:32:00
+        \\
+    );
+    defer result.deinit();
+    try expectLocalTime(&result.root, "t", .{
+        .hour = 7,
+        .minute = 32,
+        .second = 0,
+        .nano = null,
+    });
+}
+
+test "parse local time with nanoseconds" {
+    var result = try testParse(
+        \\t = 07:32:00.123456789
+        \\
+    );
+    defer result.deinit();
+    try expectLocalTime(&result.root, "t", .{
+        .hour = 7,
+        .minute = 32,
+        .second = 0,
+        .nano = 123456789,
+    });
+}
+
+test "parse multiple key-value pairs" {
+    var result = try testParse(
+        \\name = "Tom"
+        \\age = 30
+        \\active = true
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "name", "Tom");
+    try expectInt(&result.root, "age", 30);
+    try expectBool(&result.root, "active", true);
+    try std.testing.expectEqual(@as(usize, 3), result.root.entries.items.len);
+}
+
+test "parse key-value pairs with comments" {
+    var result = try testParse(
+        \\# A comment
+        \\name = "Tom" # inline comment
+        \\age = 30
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "name", "Tom");
+    try expectInt(&result.root, "age", 30);
+}
+
+test "parse dotted key" {
+    var result = try testParse(
+        \\a.b = "value"
+        \\
+    );
+    defer result.deinit();
+    const a = try expectTable(&result.root, "a");
+    try expectString(a, "b", "value");
+}
+
+test "parse deeply dotted key" {
+    var result = try testParse(
+        \\a.b.c = "value"
+        \\
+    );
+    defer result.deinit();
+    const a = try expectTable(&result.root, "a");
+    const b = try expectTable(a, "b");
+    try expectString(b, "c", "value");
+}
+
+test "parse multiple dotted keys sharing prefix" {
+    var result = try testParse(
+        \\a.b = 1
+        \\a.c = 2
+        \\
+    );
+    defer result.deinit();
+    const a = try expectTable(&result.root, "a");
+    try expectInt(a, "b", 1);
+    try expectInt(a, "c", 2);
+}
+
+test "parse quoted dotted key" {
+    var result = try testParse(
+        \\"a"."b" = "value"
+        \\
+    );
+    defer result.deinit();
+    const a = try expectTable(&result.root, "a");
+    try expectString(a, "b", "value");
+}
+
+test "parse simple table header" {
+    var result = try testParse(
+        \\[server]
+        \\host = "localhost"
+        \\port = 8080
+        \\
+    );
+    defer result.deinit();
+    const server = try expectTable(&result.root, "server");
+    try expectString(server, "host", "localhost");
+    try expectInt(server, "port", 8080);
+}
+
+test "parse nested table header" {
+    var result = try testParse(
+        \\[a.b]
+        \\key = "value"
+        \\
+    );
+    defer result.deinit();
+    const a = try expectTable(&result.root, "a");
+    const b = try expectTable(a, "b");
+    try expectString(b, "key", "value");
+}
+
+test "parse multiple table headers" {
+    var result = try testParse(
+        \\[server]
+        \\host = "localhost"
+        \\
+        \\[database]
+        \\name = "mydb"
+        \\
+    );
+    defer result.deinit();
+    const server = try expectTable(&result.root, "server");
+    try expectString(server, "host", "localhost");
+    const database = try expectTable(&result.root, "database");
+    try expectString(database, "name", "mydb");
+}
+
+test "parse table header extending implicit table" {
+    var result = try testParse(
+        \\[a.b]
+        \\key1 = "val1"
+        \\
+        \\[a.c]
+        \\key2 = "val2"
+        \\
+    );
+    defer result.deinit();
+    const a = try expectTable(&result.root, "a");
+    const b = try expectTable(a, "b");
+    try expectString(b, "key1", "val1");
+    const c = try expectTable(a, "c");
+    try expectString(c, "key2", "val2");
+}
+
+test "parse table header with dotted keys inside" {
+    var result = try testParse(
+        \\[fruit]
+        \\apple.color = "red"
+        \\apple.taste = "sweet"
+        \\
+    );
+    defer result.deinit();
+    const fruit = try expectTable(&result.root, "fruit");
+    const apple = try expectTable(fruit, "apple");
+    try expectString(apple, "color", "red");
+    try expectString(apple, "taste", "sweet");
+}
+
+test "parse super-table after sub-table" {
+    var result = try testParse(
+        \\[a.b]
+        \\val = 1
+        \\
+        \\[a]
+        \\val = 2
+        \\
+    );
+    defer result.deinit();
+    const a = try expectTable(&result.root, "a");
+    try expectInt(a, "val", 2);
+    const b = try expectTable(a, "b");
+    try expectInt(b, "val", 1);
+}
+
+test "parse duplicate table header fails" {
+    try testParseFails(
+        \\[a]
+        \\key = 1
+        \\
+        \\[a]
+        \\key = 2
+        \\
+    , error.InvalidTable);
+}
+
+test "parse table overwriting key fails" {
+    try testParseFails(
+        \\a = 1
+        \\
+        \\[a]
+        \\key = 2
+        \\
+    , error.InvalidTable);
+}
+
+test "parse array table" {
+    var result = try testParse(
+        \\[[products]]
+        \\name = "Hammer"
+        \\
+        \\[[products]]
+        \\name = "Nail"
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "products");
+    try std.testing.expectEqual(@as(usize, 2), arr.items.len);
+    const t0 = try expectArrayTable(arr, 0);
+    try expectString(t0, "name", "Hammer");
+    const t1 = try expectArrayTable(arr, 1);
+    try expectString(t1, "name", "Nail");
+}
+
+test "parse nested array table" {
+    var result = try testParse(
+        \\[[fruits]]
+        \\name = "apple"
+        \\
+        \\[[fruits]]
+        \\name = "banana"
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "fruits");
+    try std.testing.expectEqual(@as(usize, 2), arr.items.len);
+    const t0 = try expectArrayTable(arr, 0);
+    try expectString(t0, "name", "apple");
+    const t1 = try expectArrayTable(arr, 1);
+    try expectString(t1, "name", "banana");
+}
+
+test "parse array table with sub-tables" {
+    var result = try testParse(
+        \\[[fruits]]
+        \\name = "apple"
+        \\
+        \\[fruits.physical]
+        \\color = "red"
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "fruits");
+    try std.testing.expectEqual(@as(usize, 1), arr.items.len);
+    const t0 = try expectArrayTable(arr, 0);
+    try expectString(t0, "name", "apple");
+    const phys = try expectTable(t0, "physical");
+    try expectString(phys, "color", "red");
+}
+
+test "parse empty inline array" {
+    var result = try testParse(
+        \\arr = []
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "arr");
+    try std.testing.expectEqual(@as(usize, 0), arr.items.len);
+}
+
+test "parse inline array of integers" {
+    var result = try testParse(
+        \\arr = [1, 2, 3]
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "arr");
+    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try expectArrayInt(arr, 0, 1);
+    try expectArrayInt(arr, 1, 2);
+    try expectArrayInt(arr, 2, 3);
+}
+
+test "parse inline array of strings" {
+    var result = try testParse(
+        \\arr = ["a", "b", "c"]
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "arr");
+    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try expectArrayString(arr, 0, "a");
+    try expectArrayString(arr, 1, "b");
+    try expectArrayString(arr, 2, "c");
+}
+
+test "parse inline array with trailing comma" {
+    var result = try testParse(
+        \\arr = [1, 2, 3,]
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "arr");
+    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+}
+
+test "parse inline array with newlines" {
+    var result = try testParse(
+        \\arr = [
+        \\  1,
+        \\  2,
+        \\  3
+        \\]
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "arr");
+    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try expectArrayInt(arr, 0, 1);
+    try expectArrayInt(arr, 1, 2);
+    try expectArrayInt(arr, 2, 3);
+}
+
+test "parse nested inline arrays" {
+    var result = try testParse(
+        \\arr = [[1, 2], [3, 4]]
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "arr");
+    try std.testing.expectEqual(@as(usize, 2), arr.items.len);
+    const inner0 = try expectArrayArray(arr, 0);
+    try expectArrayInt(inner0, 0, 1);
+    try expectArrayInt(inner0, 1, 2);
+    const inner1 = try expectArrayArray(arr, 1);
+    try expectArrayInt(inner1, 0, 3);
+    try expectArrayInt(inner1, 1, 4);
+}
+
+test "parse mixed-type inline array" {
+    var result = try testParse(
+        \\arr = [1, "two", true]
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "arr");
+    try std.testing.expectEqual(@as(usize, 3), arr.items.len);
+    try expectArrayInt(arr, 0, 1);
+    try expectArrayString(arr, 1, "two");
+    try expectArrayBool(arr, 2, true);
+}
+
+test "parse empty inline table" {
+    var result = try testParse(
+        \\tbl = {}
+        \\
+    );
+    defer result.deinit();
+    const tbl = try expectTable(&result.root, "tbl");
+    try std.testing.expectEqual(@as(usize, 0), tbl.entries.items.len);
+}
+
+test "parse inline table with values" {
+    var result = try testParse(
+        \\point = {x = 1, y = 2}
+        \\
+    );
+    defer result.deinit();
+    const point = try expectTable(&result.root, "point");
+    try expectInt(point, "x", 1);
+    try expectInt(point, "y", 2);
+}
+
+test "parse inline table with string values" {
+    var result = try testParse(
+        \\name = {first = "Tom", last = "Preston-Werner"}
+        \\
+    );
+    defer result.deinit();
+    const name = try expectTable(&result.root, "name");
+    try expectString(name, "first", "Tom");
+    try expectString(name, "last", "Preston-Werner");
+}
+
+test "parse nested inline table" {
+    var result = try testParse(
+        \\point = {x = 1, y = 2, meta = {created = true}}
+        \\
+    );
+    defer result.deinit();
+    const point = try expectTable(&result.root, "point");
+    try expectInt(point, "x", 1);
+    try expectInt(point, "y", 2);
+    const meta = try expectTable(point, "meta");
+    try expectBool(meta, "created", true);
+}
+
+test "parse inline table with dotted keys" {
+    var result = try testParse(
+        \\fruit = {apple.color = "red"}
+        \\
+    );
+    defer result.deinit();
+    const fruit = try expectTable(&result.root, "fruit");
+    const apple = try expectTable(fruit, "apple");
+    try expectString(apple, "color", "red");
+}
+
+test "parse inline table trailing comma fails in TOML 1.0.0" {
+    try testParseFailsWithOpts(
+        \\tbl = {a = 1,}
+        \\
+    , .{ .toml_version = .@"1.0.0" }, error.UnexpectedToken);
+}
+
+test "parse inline table trailing comma succeeds in TOML 1.1.0" {
+    var result = try testParseWithOpts(
+        \\tbl = {a = 1,}
+        \\
+    , .{ .toml_version = .@"1.1.0" });
+    defer result.deinit();
+    const tbl = try expectTable(&result.root, "tbl");
+    try expectInt(tbl, "a", 1);
+}
+
+test "parse extending inline table fails" {
+    try testParseFails(
+        \\tbl = {a = 1}
+        \\tbl.b = 2
+        \\
+    , error.ExtendedInlineTable);
+}
+
+test "parse extending inline table with table header fails" {
+    try testParseFails(
+        \\tbl = {a = 1}
+        \\
+        \\[tbl]
+        \\b = 2
+        \\
+    , error.ExtendedInlineTable);
+}
+
+test "parse duplicate key fails" {
+    try testParseFails(
+        \\name = "a"
+        \\name = "b"
+        \\
+    , error.DuplicateKey);
+}
+
+test "parse duplicate key in table fails" {
+    try testParseFails(
+        \\[server]
+        \\host = "a"
+        \\host = "b"
+        \\
+    , error.DuplicateKey);
+}
+
+test "parse duplicate key via dotted key fails" {
+    try testParseFails(
+        \\a.b = 1
+        \\a.b = 2
+        \\
+    , error.DuplicateKey);
+}
+
+test "parse string with escape sequences" {
+    var result = try testParse(
+        \\val = "hello\tworld\n"
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "val", "hello\tworld\n");
+}
+
+test "parse string with unicode escape" {
+    var result = try testParse(
+        \\val = "\u0041"
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "val", "A");
+}
+
+test "parse string with backslash escape" {
+    var result = try testParse(
+        \\val = "a\\b"
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "val", "a\\b");
+}
+
+test "parse string with quote escape" {
+    var result = try testParse(
+        \\val = "a\"b"
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "val", "a\"b");
+}
+
+test "parse bare key" {
+    var result = try testParse(
+        \\bare-key = 1
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "bare-key", 1);
+}
+
+test "parse bare key with underscores" {
+    var result = try testParse(
+        \\bare_key = 1
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "bare_key", 1);
+}
+
+test "parse quoted key" {
+    var result = try testParse(
+        \\"quoted key" = 1
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "quoted key", 1);
+}
+
+test "parse literal string key" {
+    var result = try testParse(
+        \\'literal key' = 1
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "literal key", 1);
+}
+
+test "parse empty quoted key" {
+    var result = try testParse(
+        \\"" = 1
+        \\
+    );
+    defer result.deinit();
+    try expectInt(&result.root, "", 1);
+}
+
+test "parse complex document" {
+    var result = try testParse(
+        \\title = "TOML Example"
+        \\
+        \\[owner]
+        \\name = "Tom"
+        \\
+        \\[database]
+        \\server = "192.168.1.1"
+        \\ports = [8001, 8001, 8002]
+        \\enabled = true
+        \\
+    );
+    defer result.deinit();
+    try expectString(&result.root, "title", "TOML Example");
+
+    const owner = try expectTable(&result.root, "owner");
+    try expectString(owner, "name", "Tom");
+
+    const db = try expectTable(&result.root, "database");
+    try expectString(db, "server", "192.168.1.1");
+    try expectBool(db, "enabled", true);
+
+    const ports = try expectArray(db, "ports");
+    try std.testing.expectEqual(@as(usize, 3), ports.items.len);
+    try expectArrayInt(ports, 0, 8001);
+    try expectArrayInt(ports, 1, 8001);
+    try expectArrayInt(ports, 2, 8002);
+}
+
+test "parse document with array tables and sub-tables" {
+    var result = try testParse(
+        \\[[fruits]]
+        \\name = "apple"
+        \\
+        \\[fruits.physical]
+        \\color = "red"
+        \\shape = "round"
+        \\
+        \\[[fruits]]
+        \\name = "banana"
+        \\
+        \\[fruits.physical]
+        \\color = "yellow"
+        \\shape = "curved"
+        \\
+    );
+    defer result.deinit();
+    const arr = try expectArray(&result.root, "fruits");
+    try std.testing.expectEqual(@as(usize, 2), arr.items.len);
+
+    const apple = try expectArrayTable(arr, 0);
+    try expectString(apple, "name", "apple");
+    const apple_phys = try expectTable(apple, "physical");
+    try expectString(apple_phys, "color", "red");
+    try expectString(apple_phys, "shape", "round");
+
+    const banana = try expectArrayTable(arr, 1);
+    try expectString(banana, "name", "banana");
+    const banana_phys = try expectTable(banana, "physical");
+    try expectString(banana_phys, "color", "yellow");
+    try expectString(banana_phys, "shape", "curved");
+}
+
+test "parse missing value fails" {
+    try testParseFails(
+        \\key =
+        \\
+    , error.UnexpectedToken);
+}
+
+test "parse missing equals fails" {
+    try testParseFails(
+        \\key "value"
+        \\
+    , error.UnexpectedToken);
+}
+
+test "parse table header without closing bracket fails" {
+    try testParseFails("[server\nhost = 1\n", error.UnexpectedToken);
+}
+
+test "parse value after table header on same line fails" {
+    try testParseFails("[server] extra\n", error.UnexpectedToken);
+}
+
+test "parse dotted key overwriting non-table fails" {
+    try testParseFails(
+        \\a = 1
+        \\a.b = 2
+        \\
+    , error.InvalidTable);
 }

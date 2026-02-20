@@ -19,7 +19,7 @@ pub fn HashIndex(comptime E: type) type {
             const buckets = try gpa.alloc(u32, capacity);
             @memset(buckets, empty_bucket);
 
-            const mask = capacity - 1;
+            const mask: u32 = @intCast(capacity - 1);
 
             for (entries, 0..) |entry, i| {
                 const hash = std.hash.Wyhash.hash(0, entry.key);
@@ -27,7 +27,7 @@ pub fn HashIndex(comptime E: type) type {
                 while (buckets[bucket] != empty_bucket) {
                     bucket = (bucket + 1) & mask;
                 }
-                buckets[bucket] = i;
+                buckets[bucket] = @intCast(i);
             }
 
             return .{
@@ -43,7 +43,7 @@ pub fn HashIndex(comptime E: type) type {
         pub fn lookup(self: Index, entries: []const E, key: []const u8) ?usize {
             const hash = std.hash.Wyhash.hash(0, key);
             var bucket = hash & self.mask;
-            var i = 0;
+            var i: u32 = 0;
 
             while (i < self.mask) : (i += 1) {
                 const j = self.buckets[bucket];
