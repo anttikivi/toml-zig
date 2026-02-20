@@ -31,6 +31,8 @@ const ParsingFlag = struct {
     explicit: bool = false,
 };
 
+const ParsingArray = ArrayList(ParsingValue);
+
 const ParsingValue = struct {
     flag: ParsingFlag = .{},
     value: union(enum) {
@@ -42,7 +44,7 @@ const ParsingValue = struct {
         local_datetime: Datetime,
         local_date: Date,
         local_time: Time,
-        array: ArrayList(ParsingValue),
+        array: ParsingArray,
         table: ParsingTable,
     },
 };
@@ -280,7 +282,7 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
         }
     }
 
-    const arr: ArrayList(ParsingValue) = .empty;
+    const arr: ParsingArray = .empty;
     try arr.append(self.arena, .{ .value = .{ .table = .{} } });
     try table.put(self.arena, try self.arena.dupe(u8, last_key), .{ .value = .{ .array = arr } });
     const ptr = table.getPtr(last_key).?;
@@ -292,12 +294,12 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
 fn parseKeyValue(self: *Parser, first_token: Token, current_table: *ParsingTable) Error!void {
     const keys = try self.parseKey(first_token);
 
-    var tok = try self.scanner.nextKey();
-    if (tok != .equal) {
+    var token = try self.scanner.nextKey();
+    if (token != .equal) {
         return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected an equals sign" });
     }
 
-    tok = try self.scanner.nextValue();
+    token = try self.scanner.nextValue();
 
     var table = current_table;
     for (keys[0 .. keys.len - 1], 0..) |key, i| {
@@ -335,11 +337,11 @@ fn parseKeyValue(self: *Parser, first_token: Token, current_table: *ParsingTable
         return self.fail(.{ .@"error" = error.DuplicateKey });
     }
 
-    const val = try self.parseValue(tok);
+    const val = try self.parseValue(token);
     try table.put(self.arena, try self.arena.dupe(u8, final_key), val);
 
-    tok = self.scanner.nextKey();
-    if (tok != .line_feed and tok != .end_of_file) {
+    token = self.scanner.nextKey();
+    if (token != .line_feed and token != .end_of_file) {
         return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected a newline after value" });
     }
 }
@@ -389,8 +391,138 @@ fn parseValue(self: *Parser, token: Token) Error!ParsingValue {
         .local_datetime => |dt| .{ .value = .{ .local_datetime = dt } },
         .local_date => |d| .{ .value = .{ .local_date = d } },
         .local_time => |t| .{ .value = .{ .local_time = t } },
+        .left_bracket => try self.parseInlineArray(),
+        .left_brace => try self.parseInlineTable(),
         else => return self.fail(.{ .@"error" = error.UnexpectedToken }),
     };
+}
+
+fn parseInlineArray(self: *Parser) Error!ParsingValue {
+    var arr: ParsingArray = .empty;
+    var need_comma = false;
+
+    while (true) {
+        var token = try self.scanner.nexValue();
+        while (token == .line_feed) {
+            token = try self.scanner.nextValue();
+        }
+
+        if (token == .right_bracket) {
+            break;
+        }
+
+        if (token == .comma) {
+            if (!need_comma) {
+                return self.fail(.{ .@"error" = error.UnexpectedToken });
+            }
+
+            need_comma = false;
+            continue;
+        }
+
+        if (need_comma) {
+            return self.fail(.{ .@"error" = error.UnexpectedToken });
+        }
+
+        const val = try self.parseValue(token);
+        try arr.append(self.arena, val);
+        need_comma = true;
+    }
+
+    var result: ParsingValue = .{};
+    setFlagRecursively(&result, .{ .inlined = true, .standard = false, .explicit = false });
+    return result;
+}
+
+fn parseInlineTable(self: *Parser) Error!ParsingValue {
+    var table: ParsingTable = .{ .flag = .{ .inlined = true } };
+    var need_comma = false;
+    var was_comma = false;
+
+    while (true) {
+        var token = try self.scanner.nextKey();
+
+        if (self.scanner.features.inline_table_newlines) {
+            while (token == .line_feed) {
+                token = try self.scanner.nextKey();
+            }
+        }
+
+        if (token == .right_brace) {
+            if (was_comma and !self.scanner.features.inline_table_trailing_comma) {
+                return self.fail(.{ .@"error" = error.UnexpectedToken });
+            }
+
+            break;
+        }
+
+        if (token == .comma) {
+            if (!need_comma) {
+                return self.fail(.{ .@"error" = error.UnexpectedToken });
+            }
+
+            need_comma = false;
+            was_comma = true;
+            continue;
+        }
+
+        if (need_comma) {
+            return self.fail(.{ .@"error" = error.UnexpectedToken });
+        }
+
+        if (token == .line_feed) {
+            return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "newlines not allowed in inline tables" });
+        }
+
+        const keys = try self.parseKey(token);
+
+        // TODO: Is a newline allowed here?
+        token = try self.scanner.nextValue();
+        if (token != .equal) {
+            return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected an equals sign" });
+        }
+
+        var current = &table;
+        for (keys[0 .. keys.len - 1]) |key| {
+            if (current.getPtr(key)) |existing| {
+                switch (existing.value) {
+                    .table => |*t| {
+                        if (existing.table.explicit) {
+                            return self.fail(.{ .@"error" = error.InvalidTable });
+                        }
+
+                        current = t;
+                    },
+                    else => return self.fail(.{ .@"error" = error.InvalidTable }),
+                }
+            } else {
+                try current.put(self.arena, try self.arena.dupe(u8, key), .{ .value = .{ .table = .{} } });
+                const ptr = current.getPtr(key).?;
+                current = &ptr.value.table;
+            }
+        }
+
+        const final_key = keys[keys.len - 1];
+        if (current.contains(final_key)) {
+            return self.fail(.{ .@"error" = error.DuplicateKey });
+        }
+
+        token = try self.scanner.nextValue();
+        var val = try self.parseValue(token);
+        val.flag.explicit = true;
+
+        try current.put(self.arena, final_key, val);
+
+        need_comma = true;
+        was_comma = false;
+    }
+
+    var result: ParsingValue = .{
+        .flag = .{ .inlined = true },
+        .value = .{ .table = table },
+    };
+    setFlagRecursively(&result, .{ .inlined = true });
+    return result;
 }
 
 fn descendToTable(self: *Parser, keys: [][]const u8, root: *ParsingTable, is_standard: bool) Error!*ParsingTable {
@@ -573,4 +705,28 @@ fn fail(self: *const Parser, opts: struct { @"error": Error, msg: ?[]const u8 = 
     }
 
     return opts.@"error";
+}
+
+fn setFlagRecursively(val: *ParsingValue, flag: ParsingFlag) void {
+    if (flag.explicit) {
+        val.flag.explicit = true;
+    }
+
+    if (flag.inlined) {
+        value.flag.inlined = true;
+    }
+
+    if (flag.standard) {
+        value.flag.standard = true;
+    }
+
+    switch (val.value) {
+        .array => |*arr| for (arr.items) |*item| {
+            setFlagRecursively(item, flag);
+        },
+        .table => |*t| for (t.entries.items) |*entry| {
+            setFlagRecursively(&entry.value, flag);
+        },
+        else => {},
+    }
 }

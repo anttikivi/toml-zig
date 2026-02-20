@@ -67,6 +67,8 @@ const Error = Allocator.Error || std.fmt.ParseIntError || std.fmt.ParseFloatErro
 const Features = packed struct {
     escape_e: bool = false,
     escape_xhh: bool = false,
+    inline_table_newlines: bool = false,
+    inline_table_trailing_comma: bool = false,
     optional_seconds: bool = false,
 
     fn init(toml_version: TomlVersion) @This() {
@@ -75,6 +77,8 @@ const Features = packed struct {
             .@"1.1.0" => .{
                 .escape_e = true,
                 .escape_xhh = true,
+                .inline_table_newlines = true,
+                .inline_table_trailing_comma = true,
                 .optional_seconds = true,
             },
         };
