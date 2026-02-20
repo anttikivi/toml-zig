@@ -14,8 +14,10 @@ const Token = @import("Scanner.zig").Token;
 const value = @import("value.zig");
 const Date = @import("value.zig").Date;
 const Datetime = @import("value.zig").Datetime;
-const HashIndex = @import("value.zig").HashIndex;
+const HashIndex = @import("value.zig").Table.HashIndex;
+const Table = @import("value.zig").Table;
 const Time = @import("value.zig").Time;
+const Value = @import("value.zig").Value;
 
 arena: Allocator,
 scanner: Scanner,
@@ -48,6 +50,29 @@ const ParsingValue = struct {
         array: ParsingArray,
         table: ParsingTable,
     },
+
+    const Self = @This();
+
+    fn toValue(self: Self, gpa: Allocator) Allocator.Error!Value {
+        return switch (self.value) {
+            .string => |s| .{ .string = s },
+            .int => |i| .{ .int = i },
+            .float => |f| .{ .float = f },
+            .bool => |b| .{ .bool = b },
+            .datetime => |dt| .{ .datetime = dt },
+            .local_datetime => |dt| .{ .local_datetime = dt },
+            .local_date => |d| .{ .local_date = d },
+            .local_time => |t| .{ .local_time = t },
+            .array => |arr| {
+                const items = try gpa.alloc(Value, arr.items.len);
+                for (arr.items, 0..) |item, i| {
+                    items[i] = try item.toValue(gpa);
+                }
+                return .{ .array = items };
+            },
+            .table => |t| .{ .table = try t.toTable(gpa) },
+        };
+    }
 };
 
 const ParsingEntry = struct {
@@ -60,10 +85,10 @@ const ParsingTable = struct {
     flag: ParsingFlag = .{},
     index: ?Index = null,
 
-    const Table = @This();
+    const Self = @This();
     const Index = HashIndex(ParsingEntry);
 
-    fn contains(self: *const Table, key: []const u8) bool {
+    fn contains(self: *const Self, key: []const u8) bool {
         if (self.index) |index| {
             return index.lookup(self.entries.items, key) != null;
         }
@@ -77,7 +102,7 @@ const ParsingTable = struct {
         return false;
     }
 
-    fn ensureIndex(self: *Table, gpa: Allocator) Allocator.Error!void {
+    fn ensureIndex(self: *Self, gpa: Allocator) Allocator.Error!void {
         assert(self.index == null);
 
         if (self.entries.items.len < build_options.table_index_threshold) {
@@ -92,7 +117,7 @@ const ParsingTable = struct {
         self.index = try Index.init(gpa, self.entries.items, capacity);
     }
 
-    fn getPtr(self: *Table, key: []const u8) ?*ParsingValue {
+    fn getPtr(self: *Self, key: []const u8) ?*ParsingValue {
         if (self.index) |index| {
             if (index.lookup(self.entries.items, key)) |i| {
                 return &self.entries.items[i].value;
@@ -110,7 +135,7 @@ const ParsingTable = struct {
         return null;
     }
 
-    fn growIfNeeded(self: *Table, gpa: Allocator) Allocator.Error!void {
+    fn growIfNeeded(self: *Self, gpa: Allocator) Allocator.Error!void {
         if (self.index) |*index| {
             const used = self.entries.items.len;
             const capacity = index.mask + 1;
@@ -126,7 +151,7 @@ const ParsingTable = struct {
         }
     }
 
-    fn put(self: *Table, gpa: Allocator, key: []const u8, val: ParsingValue) Allocator.Error!void {
+    fn put(self: *Self, gpa: Allocator, key: []const u8, val: ParsingValue) Allocator.Error!void {
         try self.entries.append(gpa, .{ .key = key, .value = val });
 
         if (self.index) |*index| {
@@ -145,6 +170,32 @@ const ParsingTable = struct {
             try self.ensureIndex(gpa);
         }
     }
+
+    fn toTable(self: Self, gpa: Allocator) Allocator.Error!Table {
+        const entries = try gpa.alloc(Table.Entry, self.entries.items.len);
+
+        for (self.entries.items, 0..) |entry, i| {
+            entries[i] = .{
+                .key = entry.key,
+                .value = try entry.value.toValue(gpa),
+            };
+        }
+
+        var index: ?Table.Index = null;
+        if (entries.len > build_options.table_index_threshold) {
+            // Find next power of 2 >= 2 * entries.len
+            var capacity: u32 = build_options.min_index_capacity;
+            while (capacity < entries.len * 2) {
+                capacity *= 2;
+            }
+            index = try Table.Index.init(gpa, entries, capacity);
+        }
+
+        return .{
+            .entries = entries,
+            .index = index,
+        };
+    }
 };
 
 pub fn init(arena: Allocator, gpa: Allocator, input: []const u8, opts: DecodeOptions) Parser {
@@ -154,7 +205,7 @@ pub fn init(arena: Allocator, gpa: Allocator, input: []const u8, opts: DecodeOpt
     };
 }
 
-pub fn parse(self: *Parser) Error!ParsingTable {
+pub fn parse(self: *Parser) Error!Table {
     var root: ParsingTable = .{};
     var current = &root;
 
@@ -171,7 +222,7 @@ pub fn parse(self: *Parser) Error!ParsingTable {
         }
     }
 
-    return root;
+    return root.toTable(self.arena);
 }
 
 fn parseTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable {
@@ -773,7 +824,7 @@ fn setFlagRecursively(val: *ParsingValue, flag: ParsingFlag) void {
 
 const TestParseResult = struct {
     arena: std.heap.ArenaAllocator,
-    root: ParsingTable,
+    root: Table,
 
     fn deinit(self: *TestParseResult) void {
         self.arena.deinit();
@@ -1018,25 +1069,25 @@ fn expectArrayArray(arr: *ParsingArray, index: usize) !*ParsingArray {
 test "parse empty document" {
     var result = try testParse("");
     defer result.deinit();
-    try std.testing.expectEqual(@as(usize, 0), result.root.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), result.root.entries.len);
 }
 
 test "parse whitespace-only document" {
     var result = try testParse("   \t  ");
     defer result.deinit();
-    try std.testing.expectEqual(@as(usize, 0), result.root.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), result.root.entries.len);
 }
 
 test "parse newline-only document" {
     var result = try testParse("\n\n\n");
     defer result.deinit();
-    try std.testing.expectEqual(@as(usize, 0), result.root.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), result.root.entries.len);
 }
 
 test "parse comment-only document" {
     var result = try testParse("# This is a comment\n# Another comment\n");
     defer result.deinit();
-    try std.testing.expectEqual(@as(usize, 0), result.root.entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), result.root.entries.len);
 }
 
 test "parse basic string value" {
