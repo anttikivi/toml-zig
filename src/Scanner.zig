@@ -114,17 +114,24 @@ fn next(self: *Scanner, comptime key_mode: bool) Error!Token {
             '\n' => return .line_feed,
             ' ', '\t' => continue,
             '#' => {
+                var found_newline = false;
                 while (self.cursor < self.input.len) {
                     switch (self.nextChar()) {
-                        // \n, marked as hex to make it clearer that it's one of
-                        // the characters that are not permitted.
-                        0x0a => break,
+                        '\n' => {
+                            found_newline = true;
+                            break;
+                        },
                         0...8, 0x0b...0x1f, 0x7f => {
                             return self.fail(.{ .@"error" = error.InvalidControlCharacter });
                         },
                         else => {},
                     }
                 }
+
+                if (found_newline) {
+                    return .line_feed;
+                }
+
                 continue;
             },
             '.' => return .dot,
@@ -1114,6 +1121,7 @@ const next_test_cases = [_]NextTestCase{
         \\
         ,
         .seq = &[_]TestToken{
+            .line_feed,
             .end_of_file,
         },
     },
@@ -1124,6 +1132,7 @@ const next_test_cases = [_]NextTestCase{
         \\
         ,
         .seq = &[_]TestToken{
+            .line_feed,
             .line_feed,
             .end_of_file,
         },
