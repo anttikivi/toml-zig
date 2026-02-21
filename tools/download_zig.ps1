@@ -60,7 +60,7 @@ function New-TempDir {
     }
 
     $randomSuffix = [System.IO.Path]::GetRandomFileName().Replace(".", "")
-    $tmpDir = Join-Path $ParentDir ".zig-tmp.$randomSuffix"
+    $tmpDir = Join-Path -Path $ParentDir -ChildPath ".zig-tmp.$randomSuffix"
 
     if ($PSCmdlet.ShouldProcess($tmpDir, "Create temporary directory")) {
         New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
@@ -140,7 +140,7 @@ function Main {
     $archiveDir = New-TempDir -ParentDir $archiveDirParent
 
     try {
-        $archiveDest = Join-Path $archiveDir $archive
+        $archiveDest = Join-Path -Path $archiveDir -ChildPath $archive
 
         $mirrorList = @()
         try {
@@ -187,23 +187,23 @@ function Main {
 
             Write-Information "verifying ${archive} from ${url}..."
 
-            $minisignBin = Join-Path $ScriptDir ".minisign" "minisign.exe"
+            $minisignBin = Join-Path -Path (Join-Path -Path $ScriptDir -ChildPath ".minisign") -ChildPath "minisign.exe"
             if (-not (Test-Path $minisignBin)) {
                 if (Get-Command minisign -ErrorAction Ignore) {
                     $minisignBin = "minisign"
                 }
                 else {
                     # Try to download minisign using the download script
-                    $downloadMinisignScript = Join-Path $ScriptDir "download_minisign.ps1"
+                    $downloadMinisignScript = Join-Path -Path $ScriptDir -ChildPath "download_minisign.ps1"
                     if (-not (Test-Path $downloadMinisignScript)) {
                         throw "minisign not found and download script is missing, cannot verify signature"
                     }
-                    $localMinisignDir = Join-Path $ScriptDir ".minisign"
+                    $localMinisignDir = Join-Path -Path $ScriptDir -ChildPath ".minisign"
                     & $downloadMinisignScript "0.12" $localMinisignDir
                     if ((Test-Path variable:LASTEXITCODE) -and $LASTEXITCODE -ne 0) {
                         throw "failed to download minisign"
                     }
-                    $minisignBin = Join-Path $localMinisignDir "minisign.exe"
+                    $minisignBin = Join-Path -Path $localMinisignDir -ChildPath "minisign.exe"
                     if (-not (Test-Path $minisignBin)) {
                         throw "minisign binary not found after download"
                     }
@@ -236,7 +236,7 @@ function Main {
         Remove-Item $archiveDest -Force
 
         $extractedDirName = [System.IO.Path]::GetFileNameWithoutExtension($archive)
-        $extractedDir = Join-Path $archiveDir $extractedDirName
+        $extractedDir = Join-Path -Path $archiveDir -ChildPath $extractedDirName
 
         if (Test-Path $DestDir) {
             Remove-Item $DestDir -Recurse -Force
@@ -249,7 +249,7 @@ function Main {
 
         Move-Item $extractedDir $DestDir
 
-        $zigBin = Join-Path $DestDir "zig.exe"
+        $zigBin = Join-Path -Path $DestDir -ChildPath "zig.exe"
         Write-Information "Zig ${ZigVersion} available at ${zigBin}"
     }
     finally {
