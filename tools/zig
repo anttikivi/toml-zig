@@ -22,7 +22,7 @@ is_right_version() {
         ;;
     esac
 
-    found_version="$("$1" version 2>/dev/null || true)"
+    found_version="$("$1" version 2>/dev/null)" || return 1
     [ "${found_version}" = "${ZIG_VERSION}" ]
 }
 
@@ -51,7 +51,7 @@ main() {
 
         if ! is_right_version "${zig_bin}"; then
             echo "downloaded Zig is missing or has wrong version: ${zig_bin}" >&2
-            exit 1
+            return 1
         fi
     fi
 

@@ -2,24 +2,6 @@
 
 set -eu
 
-[ $# -ge 2 ] || {
-    echo "usage: download_zig <version> <destdir>" >&2
-    exit 1
-}
-
-if [ -z "$1" ]; then
-    echo "no Zig version argument passed to 'download_zig'" >&2
-    exit 1
-fi
-
-if [ -z "$2" ]; then
-    echo "no destination directory argument passed to 'download_zig'" >&2
-    exit 1
-fi
-
-ZIG_VERSION="$1"
-ZIG_DESTINATION_DIR="$2"
-
 ZIG_PUBLIC_KEY="RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U"
 ZIG_MIRRORS_URL="https://ziglang.org/download/community-mirrors.txt"
 # The list of mirrors as of 2026-02-21 as a backup if ziglang.org is unavailable
@@ -40,86 +22,208 @@ https://pkg.earth/zig
 https://fs.liujiacai.net/zigbuilds
 EOF
 )"
-ZIG_MIRROR_LIST="$(curl -fsSL "${ZIG_MIRRORS_URL}" 2>/dev/null || echo "${ZIG_FALLBACK_MIRRORS}")"
-ZIG_MIRROR="$(echo "${ZIG_MIRROR_LIST}" | grep . | sort -R | head -n 1)"
 
-echo "downloading Zig ${ZIG_VERSION} from ${ZIG_MIRROR}..."
+fetch_url() {
+    if [ -z "$1" ]; then
+        echo "no URL passed to 'fetch_url'" >&2
+        return 1
+    fi
 
-if [ "$(uname -m)" = "arm64" ] || [ "$(uname -m)" = "aarch64" ]; then
-    ZIG_ARCH="aarch64"
-else
-    ZIG_ARCH="x86_64"
-fi
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL "$1"
+        return $?
+    fi
 
-case "$(uname)" in
-Darwin)
-    ZIG_OS="macos"
-    ZIG_EXTENSION=".tar.xz"
-    ;;
-FreeBSD)
-    ZIG_OS="freebsd"
-    ZIG_EXTENSION=".tar.xz"
-    ;;
-Linux)
-    ZIG_OS="linux"
-    ZIG_EXTENSION=".tar.xz"
-    ;;
-*)
-    echo "unsupported operating system: $(uname)" >&2
-    exit 1
-    ;;
-esac
+    if command -v wget >/dev/null 2>&1; then
+        wget -qO- "$1"
+        return $?
+    fi
 
-ZIG_ARCHIVE="zig-${ZIG_ARCH}-${ZIG_OS}-${ZIG_VERSION}${ZIG_EXTENSION}"
-ZIG_DIRECTORY="$(basename "${ZIG_ARCHIVE}" "${ZIG_EXTENSION}")"
-ZIG_URL="${ZIG_MIRROR}/${ZIG_ARCHIVE}?source=anttikivi%2Ftoml-zig"
-ZIG_SIGNATURE_URL="${ZIG_MIRROR}/${ZIG_ARCHIVE}.minisig?source=anttikivi%2Ftoml-zig"
+    return 127
+}
 
-# Install minisign if it is missing. We should not download anything before we
-# know that we can verify it.
-if ! command -v minisign >/dev/null 2>&1; then
-    exit 1
-fi
+make_tempdir() {
+    [ -n "$1" ] || {
+        echo "no parent directory passed to 'make_tempdir'" >&2
+        return 1
+    }
 
-echo "downloading archive from ${ZIG_URL}..."
+    [ -d "$1" ] || {
+        echo "parent directory in 'make_tempdir' must exist" >&2
+        return 1
+    }
 
-if command -v curl >/dev/null 2>&1; then
-    curl -fsSLo "${ZIG_ARCHIVE}" "${ZIG_URL}"
-    curl -fsSLo "${ZIG_ARCHIVE}.minisig" "${ZIG_SIGNATURE_URL}"
-elif command -v wget >/dev/null 2>&1; then
-    wget -4qO "${ZIG_ARCHIVE}" "${ZIG_URL}"
-    wget -4qO "${ZIG_ARCHIVE}.minisig" "${ZIG_SIGNATURE_URL}"
-else
-    echo "neither curl nor wget available" >&2
-    exit 1
-fi
+    _tmpdir="$(mktemp -d "$1/.zig-tmp.XXXXXXXX" 2>/dev/null || true)"
+    if [ -n "${_tmpdir}" ] && [ -d "${_tmpdir}" ]; then
+        printf "%s\n" "${_tmpdir}"
+        return 0
+    fi
 
-echo "verifying ${ZIG_ARCHIVE}..."
-minisign -Vm "${ZIG_ARCHIVE}" -x "${ZIG_ARCHIVE}.minisig" -P "${ZIG_PUBLIC_KEY}"
-rm -f "${ZIG_ARCHIVE}.minisig"
+    mktemp -d -t "zig-tmp.XXXXXXXX"
+}
 
-echo "extracting ${ZIG_ARCHIVE}..."
-case "${ZIG_EXTENSION}" in
-".tar.xz")
-    tar -xf "${ZIG_ARCHIVE}"
-    ;;
-*)
-    echo "Zig archive format '${ZIG_EXTENSION}' not supported" >&2
-    exit 1
-    ;;
-esac
-rm "${ZIG_ARCHIVE}"
+shuffle_lines() {
+    awk '
+        NF { a[++n] = $0 }
+        END {
+            srand()
+            for (i = n; i > 1; i--) {
+                j = int(rand() * i) + 1
+                t = a[i]; a[i] = a[j]; a[j] = t
+            }
+            for (i = 1; i <= n; i++) print a[i]
+        }
+    '
+}
 
-rm -rf "${ZIG_DESTINATION_DIR:?}"
-mkdir -p "${ZIG_DESTINATION_DIR:?}"
+download_archive() {
+    [ -n "$1" ] || {
+        echo "no URL passed to 'download_archive'" >&2
+        return 1
+    }
 
-mv "${ZIG_DIRECTORY}/LICENSE" "${ZIG_DESTINATION_DIR}/"
-mv "${ZIG_DIRECTORY}/README.md" "${ZIG_DESTINATION_DIR}/"
-mv "${ZIG_DIRECTORY}/doc" "${ZIG_DESTINATION_DIR}/"
-mv "${ZIG_DIRECTORY}/lib" "${ZIG_DESTINATION_DIR}/"
-mv "${ZIG_DIRECTORY}/zig" "${ZIG_DESTINATION_DIR}/"
+    [ -n "$2" ] || {
+        echo "no output passed to 'download_archive'" >&2
+        return 1
+    }
 
-rmdir "${ZIG_DIRECTORY}"
+    _url="$1"
+    _out="$2"
 
-ZIG_BIN="${ZIG_DESTINATION_DIR}/zig"
-echo "Zig ${ZIG_VERSION} available at ${ZIG_BIN}"
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSLo "${_out}" "${_url}"
+        return $?
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        wget -qO "${_out}" "${_url}"
+        return $?
+    fi
+
+    return 127
+}
+
+main() {
+    [ $# -ge 2 ] || {
+        echo "usage: download_zig version destdir" >&2
+        return 1
+    }
+
+    [ -n "$1" ] || {
+        echo "no Zig version argument passed to 'download_zig'" >&2
+        return 1
+    }
+
+    [ -n "$2" ] || {
+        echo "no destination directory argument passed to 'download_zig'" >&2
+        return 1
+    }
+
+    _zig_version="$1"
+    _dest_dir="$2"
+
+    if [ "$(uname -m)" = "arm64" ] || [ "$(uname -m)" = "aarch64" ]; then
+        _arch="aarch64"
+    else
+        _arch="x86_64"
+    fi
+
+    case "$(uname)" in
+    Darwin)
+        _os="macos"
+        _archive_extension=".tar.xz"
+        ;;
+    FreeBSD)
+        _os="freebsd"
+        _archive_extension=".tar.xz"
+        ;;
+    Linux)
+        _os="linux"
+        _archive_extension=".tar.xz"
+        ;;
+    *)
+        echo "unsupported operating system: $(uname)" >&2
+        return 1
+        ;;
+    esac
+
+    _archive_dir_parent="$(dirname -- "${_dest_dir}")"
+    mkdir -p "${_archive_dir_parent}"
+
+    _archive="zig-${_arch}-${_os}-${_zig_version}${_archive_extension}"
+    _archive_dir="$(make_tempdir "${_archive_dir_parent}")"
+    trap 'rm -rf "${_archive_dir}"' EXIT INT TERM HUP
+
+    _archive_dest="${_archive_dir}/${_archive}"
+
+    _mirror_list_ordered="$(fetch_url "${ZIG_MIRRORS_URL}" 2>/dev/null || printf "%s\n" "${ZIG_FALLBACK_MIRRORS}")"
+    _mirror_list="$(printf "%s\n" "${_mirror_list_ordered}" | awk 'NF && $0 !~ /^[[:space:]]*#/' | shuffle_lines)"
+
+    _selected_mirror=""
+    _max_tries="${MAX_MIRROR_TRIES:-5}"
+    _i=0
+
+    _old_ifs=$IFS
+    IFS='
+'
+    for _mirror in ${_mirror_list}; do
+        _i=$((_i + 1))
+        [ "${_i}" -le "${_max_tries}" ] || break
+
+        _url="${_mirror}/${_archive}?source=anttikivi%2Ftoml-zig"
+        _signature_url="${_mirror}/${_archive}.minisig?source=anttikivi%2Ftoml-zig"
+
+        echo "trying to download archive from ${_url}..."
+
+        rm -f "${_archive_dest}" "${_archive_dest}.minisig"
+
+        if ! download_archive "${_url}" "${_archive_dest}" 2>/dev/null; then
+            continue
+        fi
+
+        if ! download_archive "${_signature_url}" "${_archive_dest}.minisig" 2>/dev/null; then
+            continue
+        fi
+
+        echo "verifying ${_archive} from ${_url}..."
+
+        if minisign -Vm "${_archive_dest}" -x "${_archive_dest}.minisig" -P "${ZIG_PUBLIC_KEY}" >/dev/null 2>&1; then
+            _selected_mirror="${_mirror}"
+            break
+        fi
+    done
+    unset IFS
+    IFS=$_old_ifs
+
+    if [ -z "${_selected_mirror}" ]; then
+        echo "failed to download and verify Zig from ${MAX_MIRROR_TRIES} mirrors" >&2
+        exit 1
+    fi
+
+    echo "downloaded and verified Zig from ${_selected_mirror}" >&2
+    rm -f "${_archive_dest}.minisig"
+
+    echo "extracting ${_archive_dest}..."
+    case "${_archive_extension}" in
+    ".tar.xz")
+        tar -C "${_archive_dir}" -xf "${_archive_dest}"
+        ;;
+    *)
+        echo "Zig archive format '${_archive_extension}' not supported" >&2
+        exit 1
+        ;;
+    esac
+    rm "${_archive_dest}"
+
+    _extracted_dir="${_archive_dir}/$(basename "${_archive}" "${_archive_extension}")"
+
+    rm -rf "${_dest_dir:?}"
+    mkdir -p "$(dirname "${_dest_dir:?}")"
+
+    mv "${_extracted_dir}" "${_dest_dir:?}"
+
+    _zig_bin="${_dest_dir}/zig"
+    echo "Zig ${_zig_version} available at ${_zig_bin}"
+}
+
+main "$@"
