@@ -40,7 +40,7 @@ jobs:
           version: 0.15.2
       - run: zig build test --summary all
       - run: cross-platform-actions/action@v0.32.0
-        if: ${{ runner.os == "freebsd" }}
+        if: ${{ matrix.os == 'freebsd' }}
         with:
           operating_system: ${{ matrix.os }}
           run: zig build test --summary all
