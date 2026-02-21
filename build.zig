@@ -43,14 +43,18 @@ pub fn build(b: *std.Build) void {
     // toml-test
     {
         const step = b.step("test-toml", "Run the `toml-test` test suite against the library");
-        const toml_test = b.findProgram(&.{"toml-test"}, &.{}) catch |err| switch (err) {
-            error.FileNotFound => {
-                // TODO: Add a script for installing `toml-test` to
-                // the repository.
-                step.dependOn(&b.addFail("\"toml-test\" not found").step);
-                return;
-            },
-        };
+
+        test_step.dependOn(step);
+
+        const toml_test = b.findProgram(&.{"toml-test"}, &.{}) catch |err|
+            switch (err) {
+                error.FileNotFound => {
+                    // TODO: Add a script for installing `toml-test` to
+                    // the repository.
+                    step.dependOn(&b.addFail("\"toml-test\" not found").step);
+                    return;
+                },
+            };
 
         inline for (std.meta.fields(toml.Version)) |field| {
             const step_version = b.dupe(field.name);
@@ -87,8 +91,6 @@ pub fn build(b: *std.Build) void {
             version_step.dependOn(&run.step);
             step.dependOn(version_step);
         }
-
-        test_step.dependOn(step);
     }
 
     // Formatting tasks
