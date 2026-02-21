@@ -12,6 +12,17 @@ permissions:
   contents: read
 
 jobs:
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - run: shellcheck ./tools/zig
+      - run: shellcheck ./tools/download_zig
+      - shell: pwsh
+        run: Invoke-ScriptAnalyzer -Path tools/zig.win.ps1 -Severity Error,Warning,Information -EnableExit
+      - shell: pwsh
+        run: Invoke-ScriptAnalyzer -Path tools/download_zig.ps1 -Severity Error,Warning,Information -EnableExit
+
   test:
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -31,11 +42,11 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v6.0.1
-      - uses: mlugg/setup-zig@v2.2.1
-        with:
-          version: 0.15.2
-      - run: zig build test --summary all
+      - uses: actions/checkout@v6.0.2
+      # - uses: mlugg/setup-zig@v2.2.1
+      #   with:
+      #     version: 0.15.2
+      - run: ./tools/zig.ps1 build test --summary all
         if: ${{ matrix.os != 'freebsd' }}
       - uses: cross-platform-actions/action@v0.32.0
         if: ${{ matrix.os == 'freebsd' }}
@@ -45,4 +56,4 @@ jobs:
           version: ${{ matrix.version }}
           run: |
             sudo -n pkg install -y minisign
-            ./tools/zig build test --summary all
+            ./tools/zig.ps1 build test --summary all

@@ -196,7 +196,7 @@ main() {
     IFS=$_old_ifs
 
     if [ -z "${_selected_mirror}" ]; then
-        echo "failed to download and verify Zig from ${MAX_MIRROR_TRIES} mirrors" >&2
+        echo "failed to download and verify Zig from ${_max_tries} mirrors" >&2
         exit 1
     fi
 
