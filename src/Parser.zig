@@ -734,7 +734,12 @@ fn normalizeString(self: *Parser, s: []const u8, multiline: bool) Error![]const 
                 }
 
                 const hex = s[i .. i + 8];
-                const codepoint = std.fmt.parseInt(u21, hex, 16) catch |err| return self.fail(.{ .@"error" = err });
+
+                // Parse as u32 first since the value may exceed u21 range.
+                const wide = std.fmt.parseInt(u32, hex, 16) catch |err| return self.fail(.{ .@"error" = err });
+                const codepoint = std.math.cast(u21, wide) orelse {
+                    return self.fail(.{ .@"error" = error.CodepointTooLarge });
+                };
                 var buf: [4]u8 = undefined;
                 const n = std.unicode.utf8Encode(codepoint, &buf) catch |err| return self.fail(.{ .@"error" = err });
                 try result.appendSlice(self.arena, buf[0..n]);
