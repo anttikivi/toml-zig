@@ -44,5 +44,5 @@ jobs:
           architecture: ${{ matrix.arch }}
           version: ${{ matrix.version }}
           run: |
-            ./tools/download
-            ./zig/zig build test --summary all
+            sudo -n pkg install -y minisign
+            ./tools/zig build test --summary all
