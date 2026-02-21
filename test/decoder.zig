@@ -31,7 +31,7 @@ fn run() !void {
         allocator,
         toml_bytes,
         .{
-            .toml_version = std.meta.stringToEnum(toml.TomlVersion, test_options.toml_version).?,
+            .version = std.meta.stringToEnum(toml.Version, test_options.toml_version).?,
         },
     );
     defer parsed.deinit();

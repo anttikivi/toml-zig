@@ -1,6 +1,5 @@
 const std = @import("std");
-
-const TomlVersion = @import("src/root.zig").TomlVersion;
+const toml = @import("src/root.zig");
 
 pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
@@ -53,7 +52,7 @@ pub fn build(b: *std.Build) void {
             },
         };
 
-        inline for (std.meta.fields(TomlVersion)) |field| {
+        inline for (std.meta.fields(toml.Version)) |field| {
             const step_version = b.dupe(field.name);
             std.mem.replaceScalar(u8, step_version, '.', '-');
             const version_step = b.step(

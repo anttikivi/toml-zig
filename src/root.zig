@@ -8,9 +8,8 @@ pub const Table = @import("value.zig").Table;
 pub const Time = @import("value.zig").Time;
 pub const Value = @import("value.zig").Value;
 
-/// TomlVersion represents the TOML versions that this parser supports that can
-/// be passed in to the functions with the parsing options.
-pub const TomlVersion = enum {
+/// Version represents the TOML versions that this parser supports.
+pub const Version = enum {
     @"1.1.0",
     @"1.0.0",
 };

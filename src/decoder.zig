@@ -2,7 +2,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 
 const Parser = @import("Parser.zig");
-const TomlVersion = @import("root.zig").TomlVersion;
+const Version = @import("root.zig").Version;
 const Table = @import("value.zig").Table;
 
 pub const DecodeOptions = struct {
@@ -11,7 +11,7 @@ pub const DecodeOptions = struct {
     diagnostics: ?*Diagnostics = null,
 
     /// The version of TOML to accept in the decoding.
-    toml_version: TomlVersion = .@"1.1.0",
+    version: Version = .@"1.1.0",
 
     /// Whether to check that the input is a valid UTF-8 string.
     validate_utf8: bool = true,

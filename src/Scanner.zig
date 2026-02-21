@@ -7,7 +7,7 @@ const assert = std.debug.assert;
 
 const DecodeOptions = @import("decoder.zig").DecodeOptions;
 const Diagnostics = @import("decoder.zig").Diagnostics;
-const TomlVersion = @import("root.zig").TomlVersion;
+const Version = @import("root.zig").Version;
 const Datetime = @import("value.zig").Datetime;
 const Date = @import("value.zig").Date;
 const Time = @import("value.zig").Time;
@@ -71,7 +71,7 @@ const Features = packed struct {
     inline_table_trailing_comma: bool = false,
     optional_seconds: bool = false,
 
-    fn init(toml_version: TomlVersion) @This() {
+    fn init(toml_version: Version) @This() {
         return switch (toml_version) {
             .@"1.0.0" => .{},
             .@"1.1.0" => .{
@@ -87,7 +87,7 @@ const Features = packed struct {
 
 pub fn init(gpa: Allocator, input: []const u8, opts: DecodeOptions) Scanner {
     return .{
-        .features = Features.init(opts.toml_version),
+        .features = Features.init(opts.version),
         .gpa = gpa,
         .input = input,
         .diagnostics = opts.diagnostics,

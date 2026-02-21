@@ -1743,14 +1743,14 @@ test "parse inline table trailing comma fails in TOML 1.0.0" {
     try testParseFailsWithOpts(
         \\tbl = {a = 1,}
         \\
-    , .{ .toml_version = .@"1.0.0" }, error.UnexpectedToken);
+    , .{ .version = .@"1.0.0" }, error.UnexpectedToken);
 }
 
 test "parse inline table trailing comma succeeds in TOML 1.1.0" {
     var result = try testParseWithOpts(
         \\tbl = {a = 1,}
         \\
-    , .{ .toml_version = .@"1.1.0" });
+    , .{ .version = .@"1.1.0" });
     defer result.deinit();
     const tbl = try expectTable(&result.root, "tbl");
     try expectInt(tbl, "a", 1);
