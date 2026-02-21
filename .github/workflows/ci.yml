@@ -18,8 +18,8 @@ jobs:
       matrix:
         include:
           - os: freebsd
-            arch: x86_64
-            version: 15.0
+            arch: x86-64
+            version: "15.0"
             runner: ubuntu-latest
           - { os: "linux", arch: "x86_64", runner: "ubuntu-24.04" }
           - { os: "linux", arch: "x86_64", runner: "ubuntu-22.04" }
@@ -44,5 +44,6 @@ jobs:
         if: ${{ matrix.os == 'freebsd' }}
         with:
           operating_system: ${{ matrix.os }}
+          architecture: ${{ matrix.arch }}
           version: ${{ matrix.version }}
           run: zig build test --summary all
