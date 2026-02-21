@@ -23,7 +23,7 @@ function New-TempDir {
     }
 
     $randomSuffix = [System.IO.Path]::GetRandomFileName().Replace(".", "")
-    $tmpDir = Join-Path $ParentDir ".minisign-tmp.$randomSuffix"
+    $tmpDir = Join-Path -Path $ParentDir -ChildPath ".minisign-tmp.$randomSuffix"
 
     if ($PSCmdlet.ShouldProcess($tmpDir, "Create temporary directory")) {
         New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
@@ -108,7 +108,7 @@ function Main {
     $archiveDir = New-TempDir -ParentDir $archiveDirParent
 
     try {
-        $archiveDest = Join-Path $archiveDir $archive
+        $archiveDest = Join-Path -Path $archiveDir -ChildPath $archive
 
         $url = "${MINISIGN_GITHUB_BASE_URL}/${MinisignVersion}/${archive}"
         Write-Information "downloading minisign from ${url}..."
@@ -123,7 +123,7 @@ function Main {
         Expand-Archive -Path $archiveDest -DestinationPath $archiveDir -Force
         Remove-Item $archiveDest -Force
 
-        $minisignBin = Join-Path $archiveDir "minisign-win64" $arch "minisign.exe"
+        $minisignBin = Join-Path -Path (Join-Path -Path (Join-Path -Path $archiveDir -ChildPath "minisign-win64") -ChildPath $arch) -ChildPath "minisign.exe"
 
         if (-not (Test-Path $minisignBin)) {
             throw "minisign binary not found after extraction"
@@ -139,9 +139,9 @@ function Main {
         }
 
         New-Item -ItemType Directory -Path $DestDir -Force | Out-Null
-        Move-Item $minisignBin (Join-Path $DestDir "minisign.exe")
+        Move-Item $minisignBin (Join-Path -Path $DestDir -ChildPath "minisign.exe")
 
-        Write-Information "minisign ${MinisignVersion} available at $(Join-Path $DestDir 'minisign.exe')"
+        Write-Information "minisign ${MinisignVersion} available at $(Join-Path -Path $DestDir -ChildPath 'minisign.exe')"
     }
     finally {
         if (Test-Path $archiveDir) {
