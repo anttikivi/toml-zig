@@ -976,6 +976,29 @@ fn scanNumber(self: *Scanner) Error!Token {
     }
 
     const buf = self.input[start..self.cursor];
+
+    const digit_start: usize = if (has_sign) 1 else 0;
+    const digit_part = if (has_base) buf[digit_start + 2 ..] else buf[digit_start..];
+    if (digit_part.len == 0) {
+        return self.fail(.{ .@"error" = error.InvalidNumber });
+    }
+
+    // No double underscores, no leading or trailing underscores in digits, and
+    // no underscore adjacent to sign, base prefix, dot, or exponent.
+    {
+        var was_underscore = false;
+        for (digit_part, 0..) |dc, di| {
+            if (dc == '_') {
+                if (di == 0 or di == digit_part.len - 1 or was_underscore) {
+                    return self.fail(.{ .@"error" = error.InvalidNumber });
+                }
+                was_underscore = true;
+            } else {
+                was_underscore = false;
+            }
+        }
+    }
+
     var try_float = false;
 
     const int = std.fmt.parseInt(i64, buf, 0) catch |err| switch (err) {
@@ -986,16 +1009,37 @@ fn scanNumber(self: *Scanner) Error!Token {
         error.Overflow => return self.fail(.{ .@"error" = error.Overflow }),
     };
 
+    // No leading zeros.
     if (!try_float) {
-        if (buf[0] == '0' and buf.len > 1 and !has_base) {
-            return self.fail(.{ .@"error" = error.InvalidNumber });
+        const digits = if (has_sign) buf[1..] else buf;
+        if (digits[0] == '0' and digits.len > 1 and !has_base) {
+            return self.fail(.{ .@"error" = error.InvalidNumber, .msg = "leading zero" });
         }
 
         return .{ .int = int };
     }
 
-    if (buf[0] == '.' or buf[buf.len - 1] == '.') {
-        return self.fail(.{ .@"error" = error.InvalidNumber });
+    // No leading zeros.
+    {
+        const first = if (has_sign) buf[1..] else buf;
+        if (first.len == 0 or first[0] == '.' or buf[buf.len - 1] == '.') {
+            return self.fail(.{ .@"error" = error.InvalidNumber, .msg = "leading zero" });
+        }
+    }
+
+    // No leading zeros.
+    {
+        const digits = if (has_sign) buf[1..] else buf;
+        if (digits.len > 1 and digits[0] == '0' and digits[1] != '.' and digits[1] != 'e' and digits[1] != 'E') {
+            return self.fail(.{ .@"error" = error.InvalidNumber, .msg = "leading zero" });
+        }
+    }
+
+    // No dot immediately before or after the exponent.
+    if (std.mem.indexOfAny(u8, buf, "eE")) |p| {
+        if (p > 0 and buf[p - 1] == '.') {
+            return self.fail(.{ .@"error" = error.InvalidNumber });
+        }
     }
 
     const float = std.fmt.parseFloat(f64, buf) catch return self.fail(.{
