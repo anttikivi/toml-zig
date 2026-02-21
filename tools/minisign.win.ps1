@@ -52,7 +52,7 @@ function Main {
     if (-not $minisignBin) {
         $downloadScript = Join-Path $ScriptDir "download_minisign.ps1"
         & $downloadScript $MINISIGN_VERSION $LocalMinisignDir
-        if ($LASTEXITCODE -ne 0) {
+        if ((Test-Path variable:LASTEXITCODE) -and $LASTEXITCODE -ne 0) {
             throw "failed to download minisign"
         }
 

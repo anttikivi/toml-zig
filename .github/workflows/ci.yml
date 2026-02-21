@@ -17,11 +17,17 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - run: shellcheck ./tools/zig
-      - run: shellcheck ./tools/download_zig
+      - run: shellcheck ./tools/download_zig.sh
+      - run: shellcheck ./tools/minisign
+      - run: shellcheck ./tools/download_minisign.sh
       - shell: pwsh
         run: Invoke-ScriptAnalyzer -Path tools/zig.win.ps1 -Severity Error,Warning,Information -EnableExit
       - shell: pwsh
         run: Invoke-ScriptAnalyzer -Path tools/download_zig.ps1 -Severity Error,Warning,Information -EnableExit
+      - shell: pwsh
+        run: Invoke-ScriptAnalyzer -Path tools/minisign.win.ps1 -Severity Error,Warning,Information -EnableExit
+      - shell: pwsh
+        run: Invoke-ScriptAnalyzer -Path tools/download_minisign.ps1 -Severity Error,Warning,Information -EnableExit
 
   test:
     runs-on: ${{ matrix.runner }}

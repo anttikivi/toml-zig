@@ -52,7 +52,7 @@ function Main {
     if (-not $zigBin) {
         $downloadScript = Join-Path $ScriptDir "download_zig.ps1"
         & $downloadScript $ZIG_VERSION $LocalZigDir
-        if ($LASTEXITCODE -ne 0) {
+        if ((Test-Path variable:LASTEXITCODE) -and $LASTEXITCODE -ne 0) {
             throw "failed to download Zig"
         }
 

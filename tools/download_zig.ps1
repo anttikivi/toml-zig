@@ -200,7 +200,7 @@ function Main {
                     }
                     $localMinisignDir = Join-Path $ScriptDir ".minisign"
                     & $downloadMinisignScript "0.12" $localMinisignDir
-                    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                    if ((Test-Path variable:LASTEXITCODE) -and $LASTEXITCODE -ne 0) {
                         throw "failed to download minisign"
                     }
                     $minisignBin = Join-Path $localMinisignDir "minisign.exe"
