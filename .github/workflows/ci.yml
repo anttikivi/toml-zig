@@ -43,4 +43,6 @@ jobs:
           operating_system: ${{ matrix.os }}
           architecture: ${{ matrix.arch }}
           version: ${{ matrix.version }}
-          run: zig build test --summary all
+          run: |
+            ./tools/download
+            ./zig/zig build test --summary all
