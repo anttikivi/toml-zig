@@ -39,6 +39,7 @@ jobs:
         with:
           version: 0.15.2
       - run: zig build test --summary all
+        if: ${{ matrix.os != 'freebsd' }}
       - uses: cross-platform-actions/action@v0.32.0
         if: ${{ matrix.os == 'freebsd' }}
         with:
