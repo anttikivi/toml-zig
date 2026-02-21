@@ -396,28 +396,9 @@ fn parseKeyValue(self: *Parser, first_token: Token, current_table: *ParsingTable
     const val = try self.parseValue(token);
     try table.put(self.arena, try self.arena.dupe(u8, final_key), val);
 
-    // After parsing the value, verify the line ends properly. A comment
-    // after the value consumes the newline in the scanner, so we may get
-    // the next line's first token instead of line_feed. In that case, we
-    // push back by restoring the cursor.
-    const cursor = self.scanner.cursor;
-    const line = self.scanner.line;
     token = try self.scanner.nextKey();
     if (token != .line_feed and token != .end_of_file) {
-        // Check if this could be the start of the next expression (meaning
-        // the newline was consumed by a comment). If so, push back.
-        switch (token) {
-            .literal,
-            .string,
-            .literal_string,
-            .left_bracket,
-            .double_left_bracket,
-            => {
-                self.scanner.cursor = cursor;
-                self.scanner.line = line;
-            },
-            else => return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected a newline after value" }),
-        }
+        return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected a newline after value" });
     }
 }
 
