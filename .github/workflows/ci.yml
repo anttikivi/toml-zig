@@ -43,4 +43,5 @@ jobs:
         if: ${{ matrix.os == 'freebsd' }}
         with:
           operating_system: ${{ matrix.os }}
+          version: ${{ matrix.version }}
           run: zig build test --summary all
