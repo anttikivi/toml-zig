@@ -198,8 +198,9 @@ function Main {
                 }
             }
             else {
-                Write-Warning "minisign not found, cannot verify signature"
-                continue
+                throw "minisign not found, cannot verify signature"
+                # Write-Warning "minisign not found, cannot verify signature"
+                # continue
             }
         }
 
