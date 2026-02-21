@@ -1,0 +1,6 @@
+*
+!*.gitignore
+!*.ps1
+!*.sh
+!minisign
+!zig

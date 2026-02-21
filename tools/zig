@@ -45,7 +45,7 @@ main() {
     if zig_bin="$(find_zig 2>/dev/null)"; then
         :
     else
-        "${SCRIPT_DIR}/download_zig" "${ZIG_VERSION}" "${LOCAL_ZIG_DIR}" 1>&2
+        "${SCRIPT_DIR}/download_zig.sh" "${ZIG_VERSION}" "${LOCAL_ZIG_DIR}" 1>&2
 
         zig_bin="${LOCAL_ZIG_BIN}"
 
