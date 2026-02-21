@@ -187,6 +187,11 @@ main() {
 
         echo "verifying ${_archive} from ${_url}..."
 
+        if ! command -v minisign >/dev/null 2>&1; then
+            echo "minisign not found" >&2
+            return 1
+        fi
+
         if minisign -Vm "${_archive_dest}" -x "${_archive_dest}.minisig" -P "${ZIG_PUBLIC_KEY}" >/dev/null 2>&1; then
             _selected_mirror="${_mirror}"
             break
@@ -197,7 +202,7 @@ main() {
 
     if [ -z "${_selected_mirror}" ]; then
         echo "failed to download and verify Zig from ${_max_tries} mirrors" >&2
-        exit 1
+        return 1
     fi
 
     echo "downloaded and verified Zig from ${_selected_mirror}" >&2
@@ -210,7 +215,7 @@ main() {
         ;;
     *)
         echo "Zig archive format '${_archive_extension}' not supported" >&2
-        exit 1
+        return 1
         ;;
     esac
     rm "${_archive_dest}"

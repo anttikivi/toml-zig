@@ -2,6 +2,7 @@
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+$InformationPreference = "Continue"
 
 $ZIG_PUBLIC_KEY = "RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U"
 $ZIG_MIRRORS_URL = "https://ziglang.org/download/community-mirrors.txt"
@@ -22,14 +23,14 @@ $ZIG_FALLBACK_MIRRORS = @(
     "https://fs.liujiacai.net/zigbuilds"
 )
 
-function Fetch-Url {
+function Get-UrlContent {
     param(
         [Parameter(Mandatory)]
         [string]$Url
     )
 
     if ([string]::IsNullOrEmpty($Url)) {
-        throw "no URL passed to 'Fetch-Url'"
+        throw "no URL passed to 'Get-UrlContent'"
     }
 
     try {
@@ -42,6 +43,7 @@ function Fetch-Url {
 }
 
 function New-TempDir {
+    [CmdletBinding(SupportsShouldProcess)]
     param(
         [Parameter(Mandatory)]
         [string]$ParentDir
@@ -58,11 +60,13 @@ function New-TempDir {
     $randomSuffix = [System.IO.Path]::GetRandomFileName().Replace(".", "")
     $tmpDir = Join-Path $ParentDir ".zig-tmp.$randomSuffix"
 
-    New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+    if ($PSCmdlet.ShouldProcess($tmpDir, "Create temporary directory")) {
+        New-Item -ItemType Directory -Path $tmpDir -Force | Out-Null
+    }
     return $tmpDir
 }
 
-function Get-ShuffledLines {
+function Get-ShuffledList {
     param(
         [Parameter(Mandatory)]
         [string[]]$Lines
@@ -73,7 +77,7 @@ function Get-ShuffledLines {
     return $filtered | Get-Random -Count ([int]$filtered.Count)
 }
 
-function Download-Archive {
+function Save-Archive {
     param(
         [Parameter(Mandatory)]
         [string]$Url,
@@ -83,11 +87,11 @@ function Download-Archive {
     )
 
     if ([string]::IsNullOrEmpty($Url)) {
-        throw "no URL passed to 'Download-Archive'"
+        throw "no URL passed to 'Save-Archive'"
     }
 
     if ([string]::IsNullOrEmpty($OutFile)) {
-        throw "no output passed to 'Download-Archive'"
+        throw "no output passed to 'Save-Archive'"
     }
 
     try {
@@ -138,7 +142,7 @@ function Main {
 
         $mirrorList = @()
         try {
-            $mirrorContent = Fetch-Url -Url $ZIG_MIRRORS_URL
+            $mirrorContent = Get-UrlContent -Url $ZIG_MIRRORS_URL
             $mirrorList = $mirrorContent -split "`n" | Where-Object {
                 $_.Trim().Length -gt 0 -and $_ -notmatch '^\s*#'
             } | ForEach-Object { $_.Trim() }
@@ -147,7 +151,7 @@ function Main {
             $mirrorList = $ZIG_FALLBACK_MIRRORS
         }
 
-        $mirrorList = Get-ShuffledLines -Lines $mirrorList
+        $mirrorList = Get-ShuffledList -Lines $mirrorList
 
         $selectedMirror = ""
         $maxTries = if ($env:MAX_MIRROR_TRIES) { [int]$env:MAX_MIRROR_TRIES } else { 5 }
@@ -160,26 +164,26 @@ function Main {
             $url = "${mirror}/${archive}?source=anttikivi%2Ftoml-zig"
             $signatureUrl = "${mirror}/${archive}.minisig?source=anttikivi%2Ftoml-zig"
 
-            Write-Host "trying to download archive from ${url}..."
+            Write-Information "trying to download archive from ${url}..."
 
             if (Test-Path $archiveDest) { Remove-Item $archiveDest -Force }
             if (Test-Path "${archiveDest}.minisig") { Remove-Item "${archiveDest}.minisig" -Force }
 
             try {
-                Download-Archive -Url $url -OutFile $archiveDest
+                Save-Archive -Url $url -OutFile $archiveDest
             }
             catch {
                 continue
             }
 
             try {
-                Download-Archive -Url $signatureUrl -OutFile "${archiveDest}.minisig"
+                Save-Archive -Url $signatureUrl -OutFile "${archiveDest}.minisig"
             }
             catch {
                 continue
             }
 
-            Write-Host "verifying ${archive} from ${url}..."
+            Write-Information "verifying ${archive} from ${url}..."
 
             if (Get-Command minisign -ErrorAction Ignore) {
                 try {
@@ -203,12 +207,12 @@ function Main {
             throw "failed to download and verify Zig from $maxTries mirrors"
         }
 
-        Write-Host "downloaded and verified Zig from ${selectedMirror}" -ForegroundColor Green
+        Write-Information "downloaded and verified Zig from ${selectedMirror}"
         if (Test-Path "${archiveDest}.minisig") {
             Remove-Item "${archiveDest}.minisig" -Force
         }
 
-        Write-Host "extracting ${archiveDest}..."
+        Write-Information "extracting ${archiveDest}..."
         Expand-Archive -Path $archiveDest -DestinationPath $archiveDir -Force
         Remove-Item $archiveDest -Force
 
@@ -227,7 +231,7 @@ function Main {
         Move-Item $extractedDir $DestDir
 
         $zigBin = Join-Path $DestDir "zig.exe"
-        Write-Host "Zig ${ZigVersion} available at ${zigBin}"
+        Write-Information "Zig ${ZigVersion} available at ${zigBin}"
     }
     finally {
         if (Test-Path $archiveDir) {
