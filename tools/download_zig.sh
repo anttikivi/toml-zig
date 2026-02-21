@@ -2,6 +2,8 @@
 
 set -eu
 
+SCRIPT_DIR="$(CDPATH="" cd -- "$(dirname -- "$0")" && pwd)"
+
 ZIG_PUBLIC_KEY="RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U"
 ZIG_MIRRORS_URL="https://ziglang.org/download/community-mirrors.txt"
 # The list of mirrors as of 2026-02-21 as a backup if ziglang.org is unavailable
@@ -187,12 +189,17 @@ main() {
 
         echo "verifying ${_archive} from ${_url}..."
 
-        if ! command -v minisign >/dev/null 2>&1; then
-            echo "minisign not found" >&2
+        _minisign="${SCRIPT_DIR}/minisign"
+        _minisign_output=""
+        if _minisign_output="$("${_minisign}" -v)"; then
+            :
+        else
+            echo "failed to run minisign (installation may have failed)" >&2
+            echo "${_minisign_output}" >&2
             return 1
         fi
 
-        if minisign -Vm "${_archive_dest}" -x "${_archive_dest}.minisig" -P "${ZIG_PUBLIC_KEY}" >/dev/null 2>&1; then
+        if "${_minisign}" -Vm "${_archive_dest}" -x "${_archive_dest}.minisig" -P "${ZIG_PUBLIC_KEY}" >/dev/null 2>&1; then
             _selected_mirror="${_mirror}"
             break
         fi

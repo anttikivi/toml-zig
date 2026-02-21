@@ -4,6 +4,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 $InformationPreference = "Continue"
 
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
+
 $ZIG_PUBLIC_KEY = "RWSGOq2NVecA2UPNdBUZykf1CCb147pkmdtYxgb3Ti+JO/wCYvhbAb/U"
 $ZIG_MIRRORS_URL = "https://ziglang.org/download/community-mirrors.txt"
 # The list of mirrors as of 2026-02-21 as a backup if ziglang.org is unavailable
@@ -185,22 +187,38 @@ function Main {
 
             Write-Information "verifying ${archive} from ${url}..."
 
-            if (Get-Command minisign -ErrorAction Ignore) {
-                try {
-                    $null = & minisign -Vm $archiveDest -x "${archiveDest}.minisig" -P $ZIG_PUBLIC_KEY 2>$null
-                    if ($LASTEXITCODE -eq 0) {
-                        $selectedMirror = $mirror
-                        break
+            $minisignBin = Join-Path $ScriptDir ".minisign" "minisign.exe"
+            if (-not (Test-Path $minisignBin)) {
+                if (Get-Command minisign -ErrorAction Ignore) {
+                    $minisignBin = "minisign"
+                }
+                else {
+                    # Try to download minisign using the download script
+                    $downloadMinisignScript = Join-Path $ScriptDir "download_minisign.ps1"
+                    if (-not (Test-Path $downloadMinisignScript)) {
+                        throw "minisign not found and download script is missing, cannot verify signature"
+                    }
+                    $localMinisignDir = Join-Path $ScriptDir ".minisign"
+                    & $downloadMinisignScript "0.12" $localMinisignDir
+                    if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
+                        throw "failed to download minisign"
+                    }
+                    $minisignBin = Join-Path $localMinisignDir "minisign.exe"
+                    if (-not (Test-Path $minisignBin)) {
+                        throw "minisign binary not found after download"
                     }
                 }
-                catch {
-                    continue
+            }
+
+            try {
+                $null = & $minisignBin -Vm $archiveDest -x "${archiveDest}.minisig" -P $ZIG_PUBLIC_KEY 2>$null
+                if ($LASTEXITCODE -eq 0) {
+                    $selectedMirror = $mirror
+                    break
                 }
             }
-            else {
-                throw "minisign not found, cannot verify signature"
-                # Write-Warning "minisign not found, cannot verify signature"
-                # continue
+            catch {
+                continue
             }
         }
 
