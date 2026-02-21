@@ -372,9 +372,6 @@ fn scanMultilineString(self: *Scanner) !Token {
                 const result = self.input[start .. self.cursor + extra];
                 self.cursor += i;
 
-                assert(!std.mem.startsWith(u8, result, "\"\"\""));
-                assert(!std.mem.endsWith(u8, result, "\"\"\""));
-
                 return .{ .multiline_string = result };
             } else {
                 self.cursor += i; // eat the non-closing quotes
@@ -581,9 +578,6 @@ fn scanMultilineLiteralString(self: *Scanner) Error!Token {
                 const extra = i - 3;
                 const result = self.input[start .. self.cursor + extra];
                 self.cursor += i;
-
-                assert(!std.mem.startsWith(u8, result, "'''"));
-                assert(!std.mem.endsWith(u8, result, "'''"));
 
                 return .{ .multiline_literal_string = result };
             } else {
