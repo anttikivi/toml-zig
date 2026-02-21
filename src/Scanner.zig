@@ -721,7 +721,7 @@ fn scanDatetime(self: *Scanner) Error!Token {
 
     self.cursor += 1;
 
-    const time = try self.readTime(false);
+    const time = try self.readTime();
     const dt: Datetime = .{
         .year = date.year,
         .month = date.month,
@@ -746,7 +746,7 @@ fn scanLocalTime(self: *Scanner) Error!Token {
     assert(std.ascii.isDigit(self.input[self.cursor + 1]));
     assert(self.input[self.cursor + 2] == ':');
 
-    const t = try self.readTime(true);
+    const t = try self.readTime();
 
     assert(t.isValid());
 
@@ -787,7 +787,7 @@ fn readDate(self: *Scanner) Error!Date {
     return result;
 }
 
-fn readTime(self: *Scanner, comptime local_time: bool) Error!Time {
+fn readTime(self: *Scanner) Error!Time {
     assert(self.cursor + 1 < self.input.len);
     assert(std.ascii.isDigit(self.input[self.cursor]));
     assert(std.ascii.isDigit(self.input[self.cursor + 1]));
@@ -808,8 +808,8 @@ fn readTime(self: *Scanner, comptime local_time: bool) Error!Time {
         self.cursor += 1;
         second = try self.readDatetimeDigits(u8, 2);
         seconds_read = true;
-    } else if (!self.features.optional_seconds or !local_time) {
-        return self.fail(.{ .@"error" = error.InvalidDatetime });
+    } else if (!self.features.optional_seconds) {
+        return self.fail(.{ .@"error" = error.InvalidDatetime, .msg = "missing seconds" });
     }
 
     var nano: ?u32 = null;
@@ -1916,7 +1916,20 @@ const next_value_test_cases = next_test_cases ++ [_]NextTestCase{
         \\
         ,
         .seq = &[_]TestToken{
-            .{ .@"error" = error.InvalidDatetime },
+            .{
+                .local_datetime = .{
+                    .year = 1979,
+                    .month = 5,
+                    .day = 27,
+                    .hour = 7,
+                    .minute = 32,
+                    .second = 0,
+                    .nano = null,
+                    .tz = null,
+                },
+            },
+            .line_feed,
+            .end_of_file,
         },
     },
     .{
