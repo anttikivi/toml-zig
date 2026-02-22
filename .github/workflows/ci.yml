@@ -94,7 +94,7 @@ jobs:
       - run: ./tools/zig.ps1 build fetch-toml-test
         if: ${{ matrix.os != 'freebsd' }}
       - run: |
-          version="$(./vendor/toml-test/toml-test version | cat -d' ' -f2 | tr -d 'v;')"
+          version="$(./vendor/toml-test/toml-test version | cut -d' ' -f2 | tr -d 'v;')"
           echo "TOML_TEST_VERSION=${version}" >> "${GITHUB_ENV}"
         if: ${{ matrix.os != 'freebsd' }}
         shell: bash
