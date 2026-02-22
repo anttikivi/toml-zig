@@ -115,3 +115,4 @@ jobs:
             echo "version mismatch: got ${TOML_TEST_VERSION}, expected ${EXPECTED}" >&2
             exit 1
           fi
+        shell: bash
