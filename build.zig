@@ -18,15 +18,6 @@ pub fn build(b: *std.Build) void {
         "table-index-threshold",
         "Threshold for the parsed TOML tables for switching from linear lookup to hashes. Must be a power of 2",
     ) orelse 64;
-    const default_toml_test_path = b.pathJoin(&.{ "vendor", "toml-test" });
-    const toml_test_path = b.option(
-        []const u8,
-        "toml-test-prefix",
-        b.fmt(
-            "Path where 'toml-test' is installed locally. Default is {s}",
-            .{default_toml_test_path},
-        ),
-    ) orelse default_toml_test_path;
 
     const options = b.addOptions();
     options.addOption(u32, "min_index_capacity", min_index_capacity);
@@ -53,6 +44,7 @@ pub fn build(b: *std.Build) void {
     }
 
     // fetch-toml-test
+    const toml_test_path = b.pathJoin(&.{ "vendor", "toml-test" });
     {
         const step = b.step("fetch-toml-test", "Install `toml-test` locally");
         const fetch_toml_test = b.addExecutable(.{
@@ -79,9 +71,6 @@ pub fn build(b: *std.Build) void {
         const step = b.step("test-toml", "Run the `toml-test` test suite against the library");
 
         test_step.dependOn(step);
-
-        // b.addSearchPrefix(b.pathJoin(&.{ toml_test_path, "bin" }));
-        // b.addSearchPrefix(toml_test_path);
 
         const toml_test = b.findProgram(&.{"toml-test"}, &.{toml_test_path}) catch |err| switch (err) {
             error.FileNotFound => {

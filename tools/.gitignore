@@ -1,7 +1,2 @@
-*
-!./*.ps1
-!./*.sh
-!./*.zig
-!./.gitignore
-!./minisign
-!./zig
+.minisign/
+.zig/
