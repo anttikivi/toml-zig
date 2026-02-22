@@ -107,7 +107,7 @@ jobs:
           run: |
             sudo -n pkg install -y minisign
             ./tools/zig.ps1 build fetch-toml-test
-            version="$(./vendor/toml-test/toml-test version | cat -d' ' -f2 | tr -d 'v;')"
+            version="$(./vendor/toml-test/toml-test version | cut -d' ' -f2 | tr -d 'v;')"
             echo "TOML_TEST_VERSION=${version}" >> "${GITHUB_ENV}"
       - run: |
           EXPECTED_VERSION="2.1.0"
