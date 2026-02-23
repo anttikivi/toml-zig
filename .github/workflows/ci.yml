@@ -59,6 +59,9 @@ jobs:
           go-version: "1.26"
       - run: go install github.com/toml-lang/toml-test/cmd/toml-test@latest
         if: ${{ matrix.os != 'freebsd' }}
+      - run: echo "${GOPATH}/bin" >> "${GITHUB_PATH}"
+        if: ${{ matrix.os != 'freebsd' }}
+        shell: bash
       - run: ./tools/zig.ps1 build test --summary all
         if: ${{ matrix.os != 'freebsd' }}
       - uses: cross-platform-actions/action@v0.32.0
