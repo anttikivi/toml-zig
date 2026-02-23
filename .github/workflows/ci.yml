@@ -152,9 +152,9 @@ jobs:
             ${{ steps.brew-paths.outputs.cache }}
             ${{ steps.brew-paths.outputs.cellar }}
           key: brew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml') }}
-      - run: brew install minisign@0.12
+      - run: brew install minisign
         if: ${{ steps.brew-cache.outputs.cache-hit != 'true' && matrix.os == 'macos' && matrix.arch == 'x86_64' }}
-      - run: brew link minisign@0.12
+      - run: brew link minisign
         if: ${{ steps.brew-cache.outputs.cache-hit == 'true' && matrix.os == 'macos' && matrix.arch == 'x86_64' }}
       - run: ./zig.ps1 build fetch-toml-test
         if: ${{ matrix.os != 'freebsd' }}
