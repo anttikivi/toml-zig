@@ -226,7 +226,9 @@ fn installSource(gpa: Allocator) !void {
 
     try go.invoke(gpa, &.{ "install", "-ldflags", version_flag, go_install_url }, tmp_dir.name);
 
-    try file.recursivelySetPermissions(tmp_dir.dir, 0o755, 0o644);
+    if (native_os != .windows) {
+        try file.recursivelySetPermissions(tmp_dir.dir, 0o755, 0o644);
+    }
 
     const tmp_bin = try std.fs.path.join(gpa, &.{ tmp_dir.name, "bin", "toml-test" });
     defer gpa.free(tmp_bin);
