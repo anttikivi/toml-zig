@@ -230,7 +230,7 @@ fn installSource(gpa: Allocator) !void {
         try file.recursivelySetPermissions(tmp_dir.dir, 0o755, 0o644);
     }
 
-    const tmp_bin = try std.fs.path.join(gpa, &.{ tmp_dir.name, "bin", "toml-test" });
+    const tmp_bin = try std.fs.path.join(gpa, &.{ tmp_dir.name, "bin", exe_name });
     defer gpa.free(tmp_bin);
 
     try print("moving 'toml-test' from '{s}' to '{s}'\n", .{ tmp_bin, exe_path });
