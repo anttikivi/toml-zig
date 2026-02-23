@@ -20,6 +20,8 @@ jobs:
       STATUS_CONTEXT: CI / shell
     steps:
       - uses: actions/checkout@v6.0.2
+      - id: start
+        run: echo "timestamp=$(date +%s)" >> "${GITHUB_OUTPUT}"
       - name: Set pending status on Codeberg
         if: ${{ github.event_name == 'push' && env.CODEBERG_TOKEN != '' }}
         run: |
@@ -29,6 +31,7 @@ jobs:
             -d '{
               "state": "pending",
               "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              \"description\": \"Has started running\",
               "context": "${{ env.STATUS_CONTEXT }}"
             }' \
             "https://codeberg.org/api/v1/repos/${{ env.CODEBERG_REPO }}/statuses/${{ github.sha }}"
@@ -47,12 +50,19 @@ jobs:
       - name: Set final status on Codeberg
         if: ${{ always() && github.event_name == 'push' && env.CODEBERG_TOKEN != '' }}
         run: |
+          ELAPSED=$(( $(date +%s) - ${{ steps.start.outputs.timestamp }} ))
+          MINUTES=$(( ELAPSED / 60 ))
+          SECONDS=$(( ELAPSED % 60 ))
+          TIME="${MINUTES}m${SECONDS}s"
           if [ "${{ job.status }}" = "success" ]; then
             STATE="success"
+            DESC="Successful in ${TIME}"
           elif [ "${{ job.status }}" = "cancelled" ]; then
             STATE="warning"
+            DESC="Has been cancelled"
           else
             STATE="failure"
+            DESC="Error in ${TIME}"
           fi
           curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
@@ -60,6 +70,7 @@ jobs:
             -d "{
               \"state\": \"${STATE}\",
               \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+              \"description\": \"${DESC}\",
               \"context\": \"${{ env.STATUS_CONTEXT }}\"
             }" \
             "https://codeberg.org/api/v1/repos/${{ env.CODEBERG_REPO }}/statuses/${{ github.sha }}"
@@ -96,6 +107,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6.0.2
+      - id: start
+        shell: bash
+        run: echo "timestamp=$(date +%s)" >> "${GITHUB_OUTPUT}"
       - name: Set pending status on Codeberg
         if: ${{ github.event_name == 'push' && env.CODEBERG_TOKEN != '' }}
         shell: bash
@@ -106,6 +120,7 @@ jobs:
             -d '{
               "state": "pending",
               "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+              \"description\": \"Has started running\",
               "context": "${{ env.STATUS_CONTEXT }}"
             }' \
             "https://codeberg.org/api/v1/repos/${{ env.CODEBERG_REPO }}/statuses/${{ github.sha }}"
@@ -174,12 +189,19 @@ jobs:
         if: ${{ always() && github.event_name == 'push' && env.CODEBERG_TOKEN != '' }}
         shell: bash
         run: |
+          ELAPSED=$(( $(date +%s) - ${{ steps.start.outputs.timestamp }} ))
+          MINUTES=$(( ELAPSED / 60 ))
+          SECONDS=$(( ELAPSED % 60 ))
+          TIME="${MINUTES}m${SECONDS}s"
           if [ "${{ job.status }}" = "success" ]; then
             STATE="success"
+            DESC="Successful in ${TIME}"
           elif [ "${{ job.status }}" = "cancelled" ]; then
             STATE="warning"
+            DESC="Has been cancelled"
           else
             STATE="failure"
+            DESC="Error in ${TIME}"
           fi
           curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
@@ -187,6 +209,7 @@ jobs:
             -d "{
               \"state\": \"${STATE}\",
               \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
+              \"description\": \"${DESC}\",
               \"context\": \"${{ env.STATUS_CONTEXT }}\"
             }" \
             "https://codeberg.org/api/v1/repos/${{ env.CODEBERG_REPO }}/statuses/${{ github.sha }}"
