@@ -14,27 +14,11 @@ permissions:
 jobs:
   shell:
     runs-on: ubuntu-latest
-    env:
-      CODEBERG_REPO: anttikivi/toml-zig
-      CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
-      STATUS_CONTEXT: CI / shell
     steps:
       - uses: actions/checkout@v6.0.2
-      - id: start
-        run: echo "timestamp=$(date +%s)" >> "${GITHUB_OUTPUT}"
-      - name: Set pending status on Codeberg
-        if: ${{ github.event_name == 'push' && env.CODEBERG_TOKEN != '' }}
-        run: |
-          curl -s -X POST \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "state": "pending",
-              "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-              \"description\": \"Has started running\",
-              "context": "${{ env.STATUS_CONTEXT }}"
-            }' \
-            "https://codeberg.org/api/v1/repos/${{ env.CODEBERG_REPO }}/statuses/${{ github.sha }}"
+      - uses: anttikivi/forgejo-status@v0.1.1
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
       - run: shellcheck ./tools/zig.sh
       - run: shellcheck ./tools/download_zig.sh
       - run: shellcheck ./tools/minisign.sh
@@ -47,33 +31,6 @@ jobs:
         run: Invoke-ScriptAnalyzer -Path tools/minisign.win.ps1 -Severity Error,Warning,Information -EnableExit
       - shell: pwsh
         run: Invoke-ScriptAnalyzer -Path tools/download_minisign.ps1 -Severity Error,Warning,Information -EnableExit
-      - name: Set final status on Codeberg
-        if: ${{ always() && github.event_name == 'push' && env.CODEBERG_TOKEN != '' }}
-        run: |
-          ELAPSED=$(( $(date +%s) - ${{ steps.start.outputs.timestamp }} ))
-          MINUTES=$(( ELAPSED / 60 ))
-          SECONDS=$(( ELAPSED % 60 ))
-          TIME="${MINUTES}m${SECONDS}s"
-          if [ "${{ job.status }}" = "success" ]; then
-            STATE="success"
-            DESC="Successful in ${TIME}"
-          elif [ "${{ job.status }}" = "cancelled" ]; then
-            STATE="warning"
-            DESC="Has been cancelled"
-          else
-            STATE="failure"
-            DESC="Failing after ${TIME}"
-          fi
-          curl -s -X POST \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"state\": \"${STATE}\",
-              \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
-              \"description\": \"${DESC}\",
-              \"context\": \"${{ env.STATUS_CONTEXT }}\"
-            }" \
-            "https://codeberg.org/api/v1/repos/${{ env.CODEBERG_REPO }}/statuses/${{ github.sha }}"
 
   test:
     runs-on: ${{ matrix.runner }}
@@ -100,30 +57,12 @@ jobs:
           - { os: "windows", arch: "x86_64", runner: "windows-2025-vs2026" }
       fail-fast: false
 
-    env:
-      CODEBERG_REPO: anttikivi/toml-zig
-      CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
-      STATUS_CONTEXT: "CI / test (${{ matrix.os }}, ${{ matrix.arch }}, ${{ matrix.runner }})"
-
     steps:
       - uses: actions/checkout@v6.0.2
-      - id: start
-        shell: bash
-        run: echo "timestamp=$(date +%s)" >> "${GITHUB_OUTPUT}"
-      - name: Set pending status on Codeberg
-        if: ${{ github.event_name == 'push' && env.CODEBERG_TOKEN != '' }}
-        shell: bash
-        run: |
-          curl -s -X POST \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d '{
-              "state": "pending",
-              "target_url": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-              \"description\": \"Has started running\",
-              "context": "${{ env.STATUS_CONTEXT }}"
-            }' \
-            "https://codeberg.org/api/v1/repos/${{ env.CODEBERG_REPO }}/statuses/${{ github.sha }}"
+      - uses: anttikivi/forgejo-status@v0.1.1
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+          context: "CI / test (${{ matrix.os }}, ${{ matrix.arch }}, ${{ matrix.runner }})"
       - name: Cache Go
         uses: actions/cache@v5.0.3
         if: ${{ matrix.os != 'freebsd' }}
@@ -185,31 +124,3 @@ jobs:
             sudo -n pkg install -y minisign
             ./zig build fetch-toml-test
             ./zig build test --summary all
-      - name: Set final status on Codeberg
-        if: ${{ always() && github.event_name == 'push' && env.CODEBERG_TOKEN != '' }}
-        shell: bash
-        run: |
-          ELAPSED=$(( $(date +%s) - ${{ steps.start.outputs.timestamp }} ))
-          MINUTES=$(( ELAPSED / 60 ))
-          SECONDS=$(( ELAPSED % 60 ))
-          TIME="${MINUTES}m${SECONDS}s"
-          if [ "${{ job.status }}" = "success" ]; then
-            STATE="success"
-            DESC="Successful in ${TIME}"
-          elif [ "${{ job.status }}" = "cancelled" ]; then
-            STATE="warning"
-            DESC="Has been cancelled"
-          else
-            STATE="failure"
-            DESC="Failing after ${TIME}"
-          fi
-          curl -s -X POST \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"state\": \"${STATE}\",
-              \"target_url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\",
-              \"description\": \"${DESC}\",
-              \"context\": \"${{ env.STATUS_CONTEXT }}\"
-            }" \
-            "https://codeberg.org/api/v1/repos/${{ env.CODEBERG_REPO }}/statuses/${{ github.sha }}"
