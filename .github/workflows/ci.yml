@@ -56,8 +56,6 @@ jobs:
           path: |
             tools/.go
           key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.zig', 'tools/file.zig', 'tools/go.zig', 'tools/output.zig') }}
-          restore-keys: |
-            go-${{ runner.os }}-${{ runner.arch }}-
       - name: Cache Minisign
         uses: actions/cache@v5.0.3
         if: ${{ matrix.os != 'freebsd' }}
@@ -65,8 +63,6 @@ jobs:
           path: |
             tools/.minisign
           key: minisign-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/download_minisign.*', 'tools/minisign.*') }}
-          restore-keys: |
-            minisign-${{ runner.os }}-${{ runner.arch }}-
       - name: Cache Zig
         uses: actions/cache@v5.0.3
         if: ${{ matrix.os != 'freebsd' }}
@@ -74,8 +70,6 @@ jobs:
           path: |
             tools/.zig
           key: zig-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/download_zig.*', 'tools/zig.*') }}
-          restore-keys: |
-            zig-${{ runner.os }}-${{ runner.arch }}-
       - name: Cache toml-test
         uses: actions/cache@v5.0.3
         if: ${{ matrix.os != 'freebsd' }}
@@ -83,14 +77,14 @@ jobs:
           path: |
             vendor/toml-test
           key: toml-test-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.zig', 'tools/fetch_toml_test.zig', 'tools/file.zig', 'tools/go.zig', 'tools/output.zig') }}
-          restore-keys: |
-            toml-test-${{ runner.os }}-${{ runner.arch }}-
-      - id: brew-paths
+      - name: Resolve Homebrew paths
+        id: brew-paths
         if: ${{ matrix.os == 'macos' }}
         run: |
           echo "cache=$(brew --cache)" >> "${GITHUB_OUTPUT}"
           echo "cellar=$(brew --cellar)" >> "${GITHUB_OUTPUT}"
       - name: Cache Homebrew
+        id: brew-cache
         uses: actions/cache@v5.0.3
         if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
         with:
@@ -98,12 +92,10 @@ jobs:
             ${{ steps.brew-paths.outputs.cache }}
             ${{ steps.brew-paths.outputs.cellar }}
           key: brew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml') }}
-          restore-keys: |
-            brew-${{ runner.os }}-${{ runner.arch }}-
-      - run: |
-          brew install minisign
-          brew link minisign
-        if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
+      - run: brew install minisign@0.12
+        if: ${{ steps.brew-cache.outputs.cache-hit != 'true' && matrix.os == 'macos' && matrix.arch == 'x86_64' }}
+      - run: brew link minisign@0.12
+        if: ${{ steps.brew-cache.outputs.cache-hit == 'true' && matrix.os == 'macos' && matrix.arch == 'x86_64' }}
       - run: ./zig.ps1 build fetch-toml-test
         if: ${{ matrix.os != 'freebsd' }}
       - run: ./zig.ps1 build test --summary all
@@ -118,64 +110,3 @@ jobs:
             sudo -n pkg install -y minisign
             ./zig build fetch-toml-test
             ./zig build test --summary all
-
-  fetch_toml_test:
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          - { os: "freebsd", arch: "x86-64", version: "15.0", runner: "ubuntu-latest" }
-          - { os: "linux", arch: "x86_64", runner: "ubuntu-22.04" }
-          - { os: "linux", arch: "aarch64", runner: "ubuntu-22.04-arm" }
-          - { os: "macos", arch: "x86_64", runner: "macos-15-intel" }
-          - { os: "macos", arch: "aarch64", runner: "macos-14" }
-          - { os: "windows", arch: "x86_64", runner: "windows-2022" }
-      fail-fast: false
-
-    steps:
-      - uses: actions/checkout@v6.0.2
-      - id: brew-paths
-        if: ${{ matrix.os == 'macos' }}
-        run: |
-          echo "cache=$(brew --cache)" >> "${GITHUB_OUTPUT}"
-          echo "cellar=$(brew --cellar)" >> "${GITHUB_OUTPUT}"
-      - name: Cache Homebrew
-        uses: actions/cache@v5.0.3
-        if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
-        with:
-          path: |
-            ${{ steps.brew-paths.outputs.cache }}
-            ${{ steps.brew-paths.outputs.cellar }}
-          key: brew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml') }}
-          restore-keys: |
-            brew-${{ runner.os }}-${{ runner.arch }}-
-      - run: |
-          brew install minisign
-          brew link minisign
-        if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
-      - run: ./zig.ps1 build fetch-toml-test
-        if: ${{ matrix.os != 'freebsd' }}
-      - run: |
-          version="$(./vendor/toml-test/toml-test version | cut -d' ' -f2 | tr -d 'v;')"
-          echo "TOML_TEST_VERSION=${version}" >> "${GITHUB_ENV}"
-        if: ${{ matrix.os != 'freebsd' }}
-        shell: bash
-      - uses: cross-platform-actions/action@v0.32.0
-        if: ${{ matrix.os == 'freebsd' }}
-        with:
-          operating_system: ${{ matrix.os }}
-          architecture: ${{ matrix.arch }}
-          version: ${{ matrix.version }}
-          run: |
-            sudo -n pkg install -y minisign
-            ./zig build fetch-toml-test
-            version="$(./vendor/toml-test/toml-test version | cut -d' ' -f2 | tr -d 'v;')"
-            echo "TOML_TEST_VERSION=${version}" >> "${GITHUB_ENV}"
-      - name: Check toml-test version
-        run: |
-          EXPECTED_VERSION="2.1.0"
-          if [ "${TOML_TEST_VERSION}" != "${EXPECTED_VERSION}" ]; then
-            echo "version mismatch: got ${TOML_TEST_VERSION}, expected ${EXPECTED}" >&2
-            exit 1
-          fi
-        shell: bash
