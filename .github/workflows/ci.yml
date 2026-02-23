@@ -100,7 +100,9 @@ jobs:
           key: brew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml') }}
           restore-keys: |
             brew-${{ runner.os }}-${{ runner.arch }}-
-      - run: brew install minisign
+      - run: |
+          brew install minisign
+          brew link minisign
         if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
       - run: ./zig.ps1 build fetch-toml-test
         if: ${{ matrix.os != 'freebsd' }}
@@ -147,7 +149,9 @@ jobs:
           key: brew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml') }}
           restore-keys: |
             brew-${{ runner.os }}-${{ runner.arch }}-
-      - run: brew install minisign
+      - run: |
+          brew install minisign
+          brew link minisign
         if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
       - run: ./zig.ps1 build fetch-toml-test
         if: ${{ matrix.os != 'freebsd' }}
