@@ -116,7 +116,7 @@ main() {
         _arch="x86_64"
     fi
 
-    if [ "$(uname)" = "Darwin" ] || [ "${_arch}" = "x86_64" ]; then
+    if [ "$(uname)" = "Darwin" ] && [ "${_arch}" = "x86_64" ]; then
         echo "minisign repository does not provide prebuilt binaries for x86_64 Darwin" >&2
         echo "please install minisign using other methods, like Homebrew" >&2
         return 1
