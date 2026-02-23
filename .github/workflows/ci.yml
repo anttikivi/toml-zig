@@ -16,12 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
-      - run: shellcheck ./tools/zig
+      - run: shellcheck ./tools/zig.sh
       - run: shellcheck ./tools/download_zig.sh
-      - run: shellcheck ./tools/minisign
+      - run: shellcheck ./tools/minisign.sh
       - run: shellcheck ./tools/download_minisign.sh
       - shell: pwsh
-        run: Invoke-ScriptAnalyzer -Path tools/zig.win.ps1 -Severity Error,Warning,Information -EnableExit
+        run: Invoke-ScriptAnalyzer -Path tools/zig.ps1 -Severity Error,Warning,Information -EnableExit
       - shell: pwsh
         run: Invoke-ScriptAnalyzer -Path tools/download_zig.ps1 -Severity Error,Warning,Information -EnableExit
       - shell: pwsh
@@ -49,11 +49,57 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6.0.2
+      - uses: actions/cache@v5.0.3
+        if: ${{ matrix.os != 'freebsd' }}
+        with:
+          path: |
+            tools/.go
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.zig', 'tools/file.zig', 'tools/go.zig', 'tools/output.zig') }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ runner.arch }}-
+      - uses: actions/cache@v5.0.3
+        if: ${{ matrix.os != 'freebsd' }}
+        with:
+          path: |
+            tools/.minisign
+          key: minisign-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/download_minisign.*', 'tools/minisign.*') }}
+          restore-keys: |
+            minisign-${{ runner.os }}-${{ runner.arch }}-
+      - uses: actions/cache@v5.0.3
+        if: ${{ matrix.os != 'freebsd' }}
+        with:
+          path: |
+            tools/.zig
+          key: zig-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/download_zig.*', 'tools/zig.*') }}
+          restore-keys: |
+            zig-${{ runner.os }}-${{ runner.arch }}-
+      - uses: actions/cache@v5.0.3
+        if: ${{ matrix.os != 'freebsd' }}
+        with:
+          path: |
+            vendor/toml-test
+          key: toml-test-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.zig', 'tools/fetch_toml_test.zig', 'tools/file.zig', 'tools/go.zig', 'tools/output.zig') }}
+          restore-keys: |
+            toml-test-${{ runner.os }}-${{ runner.arch }}-
+      - id: brew-paths
+        if: ${{ matrix.os == 'macos' }}
+        run: |
+          echo "cache=$(brew --cache)" >> "${GITHUB_OUTPUT}"
+          echo "cellar=$(brew --cellar)" >> "${GITHUB_OUTPUT}"
+      - uses: actions/cache@v5.0.3
+        if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
+        with:
+          path: |
+            ${{ steps.brew-paths.outputs.cache }}
+            ${{ steps.brew-paths.outputs.cellar }}
+          key: brew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml') }}
+          restore-keys: |
+            brew-${{ runner.os }}-${{ runner.arch }}-
       - run: brew install minisign
         if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
-      - run: ./tools/zig.ps1 build fetch-toml-test
+      - run: ./zig.ps1 build fetch-toml-test
         if: ${{ matrix.os != 'freebsd' }}
-      - run: ./tools/zig.ps1 build test --summary all
+      - run: ./zig.ps1 build test --summary all
         if: ${{ matrix.os != 'freebsd' }}
       - uses: cross-platform-actions/action@v0.32.0
         if: ${{ matrix.os == 'freebsd' }}
@@ -63,8 +109,8 @@ jobs:
           version: ${{ matrix.version }}
           run: |
             sudo -n pkg install -y minisign
-            ./tools/zig.ps1 build fetch-toml-test
-            ./tools/zig.ps1 build test --summary all
+            ./zig build fetch-toml-test
+            ./zig build test --summary all
 
   fetch_toml_test:
     runs-on: ${{ matrix.runner }}
@@ -81,11 +127,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: mlugg/setup-zig@v2.2.1
-        if: ${{ matrix.os != 'freebsd' }}
-        with:
-          version: 0.15.2
-      - run: ./tools/zig.ps1 build fetch-toml-test
+      - run: ./zig.ps1 build fetch-toml-test
         if: ${{ matrix.os != 'freebsd' }}
       - run: |
           version="$(./vendor/toml-test/toml-test version | cut -d' ' -f2 | tr -d 'v;')"
@@ -100,7 +142,7 @@ jobs:
           version: ${{ matrix.version }}
           run: |
             sudo -n pkg install -y minisign
-            ./tools/zig.ps1 build fetch-toml-test
+            ./zig build fetch-toml-test
             version="$(./vendor/toml-test/toml-test version | cut -d' ' -f2 | tr -d 'v;')"
             echo "TOML_TEST_VERSION=${version}" >> "${GITHUB_ENV}"
       - run: |

@@ -189,7 +189,7 @@ main() {
 
         echo "verifying ${_archive} from ${_url}..."
 
-        _minisign="${SCRIPT_DIR}/minisign"
+        _minisign="${SCRIPT_DIR}/minisign.sh"
         _minisign_output=""
         if _minisign_output="$("${_minisign}" -v)"; then
             :
