@@ -1,8 +1,12 @@
 const build_options = @import("build_options");
 const builtin = @import("builtin");
 const std = @import("std");
+const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const Sha256 = std.crypto.hash.sha2.Sha256;
+
+const fail = @import("fail.zig").fail;
+const file = @import("file.zig");
 
 const native_os = builtin.target.os.tag;
 
@@ -42,7 +46,6 @@ const sha256_hashes = std.StaticStringMap(*const [Sha256.digest_length * 2]u8).i
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 var stdout_buffer: [4096]u8 = undefined;
-var stderr_buffer: [4096]u8 = undefined;
 
 pub fn main() !void {
     const gpa = debug_allocator.allocator();
@@ -50,9 +53,6 @@ pub fn main() !void {
 
     var stdout_writer = std.fs.File.stdout().writerStreaming(&stdout_buffer);
     var stdout = &stdout_writer.interface;
-
-    var stderr_writer = std.fs.File.stderr().writerStreaming(&stderr_buffer);
-    var stderr = &stderr_writer.interface;
 
     const exe_name = if (native_os == .windows) "toml-test.exe" else "toml-test";
     const cwd = std.fs.cwd();
@@ -62,81 +62,11 @@ pub fn main() !void {
     const exe_path = try std.fs.path.join(gpa, &.{ build_options.toml_test_path, exe_name });
     defer gpa.free(exe_path);
 
-    var found_exe = false;
-    if (cwd.openFile(exe_path, .{})) |f| {
-        defer f.close();
-        found_exe = true;
-    } else |err| switch (err) {
-        error.FileNotFound => {
-            try stdout.print("{s} not found, installing\n", .{exe_path});
-            try stdout.flush();
-        },
-        else => return err,
+    if (try isInstalled(gpa, exe_path)) {
+        try stdout.print("toml-test version {s} already installed\n", .{build_options.toml_test_version});
+        try stdout.flush();
+        return;
     }
-
-    if (found_exe) {
-        var child_stdout: ArrayList(u8) = .empty;
-        var child_stderr: ArrayList(u8) = .empty;
-        defer child_stdout.deinit(gpa);
-        defer child_stderr.deinit(gpa);
-
-        var child = std.process.Child.init(&.{ exe_path, "version" }, gpa);
-        child.stdout_behavior = .Pipe;
-        child.stderr_behavior = .Pipe;
-
-        try child.spawn();
-        errdefer _ = child.kill() catch |err| switch (err) {
-            error.AlreadyTerminated => {},
-            else => @panic("failed to kill toml-test"),
-        };
-
-        try child.collectOutput(gpa, &child_stdout, &child_stderr, 256);
-        const term = try child.wait();
-
-        if (term != .Exited or term.Exited != 0) {
-            try stderr.writeAll("'toml-test version' exited with non-zero status\n");
-            try stderr.flush();
-            return error.TomlTestFailed;
-        }
-
-        const out = try child_stdout.toOwnedSlice(gpa);
-        defer gpa.free(out);
-
-        const trimmed = std.mem.trim(u8, out, " \n\r");
-        var it = std.mem.splitScalar(u8, trimmed, ' ');
-        var next = it.next() orelse {
-            try stderr.writeAll("unexpected 'toml-test version' output, first token not found:\n");
-            try stderr.writeAll(out);
-            try stderr.flush();
-            return error.TomlTestOutput;
-        };
-        if (!std.mem.eql(u8, next, "toml-test")) {
-            try stderr.print("unexpected 'toml-test version' first token '{s}', expected 'toml-test':\n", .{next});
-            try stderr.writeAll(out);
-            try stderr.flush();
-            return error.TomlTestOutput;
-        }
-
-        next = it.next() orelse {
-            try stderr.writeAll("unexpected 'toml-test version' output, second token not found:\n");
-            try stderr.writeAll(out);
-            try stderr.flush();
-            return error.TomlTestOutput;
-        };
-        next = std.mem.trimStart(u8, next, "v \n\r");
-        next = std.mem.trimEnd(u8, next, "; \n\r");
-
-        if (std.mem.eql(u8, build_options.toml_test_version, next)) {
-            try stdout.print("toml-test version {s} already installed\n", .{build_options.toml_test_version});
-            try stdout.flush();
-            return;
-        }
-    }
-
-    const rand_int = std.crypto.random.int(u64);
-    const tmp_dir_name = ".tmp-toml-test." ++ std.fmt.hex(rand_int);
-    try cwd.makePath(tmp_dir_name);
-    defer cwd.deleteTree(tmp_dir_name) catch @panic("failed to delete temporary directory");
 
     const archive_name = try std.fmt.allocPrint(gpa, "toml-test-v{[version]s}-{[os]s}-{[arch]s}{[extension]s}", .{
         .version = build_options.toml_test_version,
@@ -148,11 +78,7 @@ pub fn main() !void {
             .x86_64 => "amd64",
             .aarch64 => "arm64",
             .arm => "arm",
-            else => |t| {
-                try stderr.print("architecture '{t}' is not supported\n", .{t});
-                try stderr.flush();
-                return error.UnsupportedPlatform;
-            },
+            else => |t| return fail("architecture '{t}' is not supported\n", .{t}),
         },
         .extension = switch (native_os) {
             .windows => ".exe.gz",
@@ -169,81 +95,105 @@ pub fn main() !void {
     try stdout.print("downloading from {s}\n", .{url});
     try stdout.flush();
 
-    var tmp_dir = try cwd.openDir(tmp_dir_name, .{});
-    defer tmp_dir.close();
+    const tmp_archive_name = "toml-test.gz";
+    var tmp_dir = try file.makeTempDir(gpa, cwd, ".tmp-toml-test");
+    defer tmp_dir.deinit(gpa, cwd);
 
-    var archive_closed = false;
-    var toml_test_archive = try tmp_dir.createFile("toml-test.gz", .{ .exclusive = true, .truncate = true });
-    defer if (!archive_closed) toml_test_archive.close();
+    const tmp_archive_path = try std.fs.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
+    defer gpa.free(tmp_archive_path);
 
-    var archive_buffer: [1024]u8 = undefined;
-    var archive_writer = toml_test_archive.writer(&archive_buffer);
+    try stdout.print("downloading to {s}\n", .{tmp_archive_path});
+    try stdout.flush();
 
-    var client: std.http.Client = .{ .allocator = gpa };
-    defer client.deinit();
+    try file.fetch(gpa, tmp_dir.dir, url, tmp_archive_name);
 
-    const download_result = try client.fetch(.{
-        .location = .{ .url = url },
-        .response_writer = &archive_writer.interface,
-    });
+    try stdout.print("verifying SHA256 checksum of {s}\n", .{tmp_archive_path});
+    try stdout.flush();
 
-    if (download_result.status != .ok) {
-        try stderr.print("failed to download, status {d}\n", .{download_result.status});
-        try stderr.flush();
-        return error.DownloadFailed;
-    }
+    file.verifySha256(
+        tmp_dir.dir,
+        tmp_archive_name,
+        sha256_hashes.get(archive_name) orelse return error.UnknownArtifact,
+    ) catch |err| {
+        const path = try std.fs.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
+        defer gpa.free(path);
+        return switch (err) {
+            error.Reported => fail("checking the SHA256 checksum of {s} failed\n", .{path}),
+            else => fail("checking the SHA256 checksum of {s} failed: {t}\n", .{ path, err }),
+        };
+    };
 
-    try archive_writer.interface.flush();
-    toml_test_archive.close();
-    archive_closed = true;
+    try stdout.print("extracting from {s} to {s}\n", .{ tmp_archive_path, exe_path });
+    try stdout.flush();
 
-    var sha_closed = false;
-    var sha_file = try tmp_dir.openFile("toml-test.gz", .{});
-    defer if (!sha_closed) sha_file.close();
-
-    var sha_buf: [1024]u8 = undefined;
-    var sha_reader = sha_file.reader(&sha_buf);
-
-    var hasher = Sha256.init(.{});
-    var hash_buf: [1024]u8 = undefined;
-    while (true) {
-        const n = try sha_reader.interface.readSliceShort(&hash_buf);
-        if (n == 0) {
-            break;
-        }
-        hasher.update(hash_buf[0..n]);
-    }
-
-    const digest: [Sha256.digest_length]u8 = hasher.finalResult();
-    const hex = std.fmt.bytesToHex(digest, .lower);
-    if (!std.mem.eql(u8, &hex, sha256_hashes.get(archive_name) orelse return error.UnknownArtifact)) {
-        try stderr.writeAll("checksum of the downloaded file does not match\n");
-        try stderr.print("expected '{s}', got '{s}'\n", .{ sha256_hashes.get(archive_name).?, hex });
-        try stderr.flush();
-        return error.InvalidSha256;
-    }
-
-    sha_file.close();
-    sha_closed = true;
-
-    var input_file = try tmp_dir.openFile("toml-test.gz", .{});
-    defer input_file.close();
-
-    var output_file = try cwd.createFile(exe_path, .{ .truncate = true });
-    defer output_file.close();
-
-    var input_buf: [1024]u8 = undefined;
-    var output_buf: [1024]u8 = undefined;
-    var input_reader = input_file.reader(&input_buf);
-    var output_writer = output_file.writer(&output_buf);
-
-    var decompress_buf: [std.compress.flate.max_window_len]u8 = undefined;
-    var decompress: std.compress.flate.Decompress = .init(&input_reader.interface, .gzip, &decompress_buf);
-
-    _ = try decompress.reader.streamRemaining(&output_writer.interface);
-    try output_writer.interface.flush();
+    try file.extractGz(tmp_dir.dir, cwd, tmp_archive_name, exe_path);
 
     if (native_os != .windows) {
-        try output_file.chmod(0o755);
+        const exe = try cwd.openFile(exe_path, .{});
+        defer exe.close();
+        try exe.chmod(0o755);
     }
+
+    if (try isInstalled(gpa, exe_path)) {
+        try stdout.print("toml-test version {s} installed\n", .{build_options.toml_test_version});
+        try stdout.flush();
+        return;
+    }
+
+    return fail("unknown error when installing toml-test\n", .{});
+}
+
+fn isInstalled(gpa: Allocator, path: []const u8) !bool {
+    if (std.fs.cwd().openFile(path, .{})) |f| {
+        defer f.close();
+    } else |err| switch (err) {
+        error.FileNotFound => {
+            return false;
+        },
+        else => return err,
+    }
+
+    var child_stdout: ArrayList(u8) = .empty;
+    var child_stderr: ArrayList(u8) = .empty;
+    defer child_stdout.deinit(gpa);
+    defer child_stderr.deinit(gpa);
+
+    var child = std.process.Child.init(&.{ path, "version" }, gpa);
+    child.stdout_behavior = .Pipe;
+    child.stderr_behavior = .Pipe;
+
+    try child.spawn();
+    errdefer _ = child.kill() catch |err| switch (err) {
+        error.AlreadyTerminated => {},
+        else => @panic("failed to kill toml-test"),
+    };
+
+    try child.collectOutput(gpa, &child_stdout, &child_stderr, 256);
+    const term = try child.wait();
+
+    if (term != .Exited or term.Exited != 0) {
+        return error.TomlTestFailed;
+    }
+
+    const out = try child_stdout.toOwnedSlice(gpa);
+    defer gpa.free(out);
+
+    const trimmed = std.mem.trim(u8, out, " \n\r");
+    var it = std.mem.splitScalar(u8, trimmed, ' ');
+    var next = it.next() orelse return fail(
+        "unexpected 'toml-test version' output, first token not found:\n{s}\n",
+        .{out},
+    );
+    if (!std.mem.eql(u8, next, "toml-test")) {
+        return fail("unexpected 'toml-test version' first token '{s}', expected 'toml-test':\n{s}\n", .{ next, out });
+    }
+
+    next = it.next() orelse return fail(
+        "unexpected 'toml-test version' output, second token not found:\n{s}\n",
+        .{out},
+    );
+    next = std.mem.trimStart(u8, next, "v \n\r");
+    next = std.mem.trimEnd(u8, next, "; \n\r");
+
+    return std.mem.eql(u8, build_options.toml_test_version, next);
 }
