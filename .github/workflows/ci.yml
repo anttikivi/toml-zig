@@ -61,7 +61,7 @@ jobs:
           version: ${{ matrix.version }}
           run: |
             sudo -n pkg install -y minisign
-            ./tools/zig.ps1 fetch-toml-test
+            ./tools/zig.ps1 build fetch-toml-test
             ./tools/zig.ps1 build test --summary all
 
   fetch_toml_test:
