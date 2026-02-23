@@ -221,10 +221,15 @@ fn installSource(gpa: Allocator) !void {
     var tmp_dir = try file.makeTempDir(gpa, cwd, ".tmp-go-install-toml-test");
     defer tmp_dir.deinit(gpa, cwd);
 
-    const version_flag = try std.mem.concat(gpa, u8, &.{ "-X zgo.at/zli.version=v", tool_options.toml_test_version });
-    defer gpa.free(version_flag);
+    const ldflags = try std.mem.concat(gpa, u8, &.{
+        "-X \"zgo.at/zli.version=v",
+        tool_options.toml_test_version,
+        "\" ",
+        "-X \"zgo.at/zli.progname=toml-test\"",
+    });
+    defer gpa.free(ldflags);
 
-    try go.invoke(gpa, &.{ "install", "-ldflags", version_flag, go_install_url }, tmp_dir.name);
+    try go.invoke(gpa, &.{ "install", "-ldflags", ldflags, go_install_url }, tmp_dir.name);
 
     if (native_os != .windows) {
         try file.recursivelySetPermissions(tmp_dir.dir, 0o755, 0o644);
