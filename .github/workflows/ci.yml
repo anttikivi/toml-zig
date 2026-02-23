@@ -62,7 +62,7 @@ jobs:
             DESC="Has been cancelled"
           else
             STATE="failure"
-            DESC="Error in ${TIME}"
+            DESC="Failing after ${TIME}"
           fi
           curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
@@ -201,7 +201,7 @@ jobs:
             DESC="Has been cancelled"
           else
             STATE="failure"
-            DESC="Error in ${TIME}"
+            DESC="Failing after ${TIME}"
           fi
           curl -s -X POST \
             -H "Authorization: token ${CODEBERG_TOKEN}" \
