@@ -49,6 +49,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v6.0.2
+      - run: brew install minisign
+        if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
       - run: ./tools/zig.ps1 build fetch-toml-test
         if: ${{ matrix.os != 'freebsd' }}
       - run: ./tools/zig.ps1 build test --summary all
