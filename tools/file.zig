@@ -2,7 +2,8 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Sha256 = std.crypto.hash.sha2.Sha256;
 
-const fail = @import("fail.zig").fail;
+const fail = @import("output.zig").fail;
+const print = @import("output.zig").print;
 
 pub const MakeTempDirResult = struct {
     dir: std.fs.Dir,
@@ -14,6 +15,11 @@ pub const MakeTempDirResult = struct {
         gpa.free(self.name);
     }
 };
+
+pub fn exists(dir: std.fs.Dir, path: []const u8) bool {
+    dir.access(path, .{}) catch return false;
+    return true;
+}
 
 pub fn extractGz(input_dir: std.fs.Dir, output_dir: std.fs.Dir, input_path: []const u8, output_path: []const u8) !void {
     var input = try input_dir.openFile(input_path, .{});
@@ -32,6 +38,33 @@ pub fn extractGz(input_dir: std.fs.Dir, output_dir: std.fs.Dir, input_path: []co
 
     _ = try decompress.reader.streamRemaining(&output_writer.interface);
     try output_writer.interface.flush();
+}
+
+pub fn extractTarGz(gpa: Allocator, input_dir: std.fs.Dir, output_dir: std.fs.Dir, input_path: []const u8) !void {
+    const cwd = std.fs.cwd();
+    var tmp_dir = try makeTempDir(gpa, cwd, ".tmp-tar-gz");
+    defer tmp_dir.deinit(gpa, cwd);
+
+    const tmp_file_path = ".tmp.tar";
+    try extractGz(input_dir, tmp_dir.dir, input_path, tmp_file_path);
+
+    var input = try tmp_dir.dir.openFile(tmp_file_path, .{});
+    defer input.close();
+
+    var input_buf: [1024]u8 = undefined;
+    var input_reader = input.reader(&input_buf);
+
+    try std.tar.pipeToFileSystem(output_dir, &input_reader.interface, .{});
+}
+
+pub fn extractZip(input_dir: std.fs.Dir, output_dir: std.fs.Dir, input_path: []const u8) !void {
+    var input = try input_dir.openFile(input_path, .{});
+    defer input.close();
+
+    var input_buf: [1024]u8 = undefined;
+    var input_reader = input.reader(&input_buf);
+
+    try std.zip.extract(output_dir, &input_reader, .{});
 }
 
 pub fn fetch(gpa: Allocator, dir: std.fs.Dir, url: []const u8, dest: []const u8) !void {
@@ -56,10 +89,31 @@ pub fn fetch(gpa: Allocator, dir: std.fs.Dir, url: []const u8, dest: []const u8)
     try writer.interface.flush();
 }
 
-pub fn makeTempDir(gpa: Allocator, dir: std.fs.Dir, comptime name: []const u8) !MakeTempDirResult {
+pub fn makeTempDir(gpa: Allocator, dir: std.fs.Dir, name: []const u8) !MakeTempDirResult {
     const rand_int = std.crypto.random.int(u64);
     const dir_name = try std.mem.concat(gpa, u8, &.{ name, ".", &std.fmt.hex(rand_int) });
-    return .{ .dir = try dir.makeOpenPath(dir_name, .{}), .name = dir_name };
+    return .{ .dir = try dir.makeOpenPath(dir_name, .{ .iterate = true }), .name = dir_name };
+}
+
+pub fn recursivelySetPermissions(dir: std.fs.Dir, dir_mode: std.fs.File.Mode, file_mode: std.fs.File.Mode) !void {
+    var it = dir.iterate();
+    while (try it.next()) |entry| {
+        switch (entry.kind) {
+            .directory => {
+                var d = try dir.openDir(entry.name, .{ .iterate = true });
+                defer d.close();
+                try d.chmod(dir_mode);
+
+                try recursivelySetPermissions(d, dir_mode, file_mode);
+            },
+            .file => {
+                var f = try dir.openFile(entry.name, .{});
+                defer f.close();
+                try f.chmod(file_mode);
+            },
+            else => {},
+        }
+    }
 }
 
 pub fn verifySha256(dir: std.fs.Dir, path: []const u8, expected: *const [Sha256.digest_length * 2]u8) !void {

@@ -17,4 +17,4 @@ jobs:
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v6.0.2
       - uses: https://codeberg.org/mlugg/setup-zig@v2.2.0
-      - run: zig build test --summary all
+      - run: zig build test-unit --summary all

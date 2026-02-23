@@ -56,11 +56,12 @@ pub fn build(b: *std.Build) void {
             }),
         });
 
-        const fetch_options = b.addOptions();
-        fetch_options.addOption([]const u8, "toml_test_path", toml_test_path);
-        fetch_options.addOption([]const u8, "toml_test_version", b.fmt("{f}", .{toml_test_version}));
+        const tool_options = b.addOptions();
+        tool_options.addOption([]const u8, "go_path", b.pathJoin(&.{ "tools", ".go" }));
+        tool_options.addOption([]const u8, "toml_test_path", toml_test_path);
+        tool_options.addOption([]const u8, "toml_test_version", b.fmt("{f}", .{toml_test_version}));
 
-        fetch_toml_test.root_module.addOptions("build_options", fetch_options);
+        fetch_toml_test.root_module.addOptions("tool_options", tool_options);
 
         const run = b.addRunArtifact(fetch_toml_test);
         step.dependOn(&run.step);
