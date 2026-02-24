@@ -15,7 +15,7 @@ jobs:
   shell:
     runs-on: ubuntu-latest
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.1
+      - uses: anttikivi/forgejo-status@v0.1.2
         with:
           token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.1
+      - uses: anttikivi/forgejo-status@v0.1.2
         with:
           token: ${{ secrets.CODEBERG_TOKEN }}
           context: "CI / test (${{ matrix.os }}, ${{ matrix.arch }}, ${{ matrix.runner }})"
