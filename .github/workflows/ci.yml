@@ -15,10 +15,10 @@ jobs:
   shell:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
       - uses: anttikivi/forgejo-status@v0.1.1
         with:
           token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
       - run: shellcheck ./tools/zig.sh
       - run: shellcheck ./tools/download_zig.sh
       - run: shellcheck ./tools/minisign.sh
@@ -58,11 +58,11 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v6.0.2
       - uses: anttikivi/forgejo-status@v0.1.1
         with:
           token: ${{ secrets.CODEBERG_TOKEN }}
           context: "CI / test (${{ matrix.os }}, ${{ matrix.arch }}, ${{ matrix.runner }})"
+      - uses: actions/checkout@v6.0.2
       - name: Cache Go
         uses: actions/cache@v5.0.3
         if: ${{ matrix.os != 'freebsd' }}
