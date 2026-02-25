@@ -57,14 +57,7 @@ jobs:
       - uses: anttikivi/forgejo-status@v0.1.2
         with:
           token: ${{ secrets.CODEBERG_TOKEN }}
-          context: >-
-            ${{ github.workflow }} / ${{ github.job }} (${{ case(
-              matrix.version != '', format('{0} {1}', matrix.os, matrix.version),
-              matrix.os
-            ) }}, ${{ matrix.arch }}${{ case(
-              matrix.os == 'freebsd', '',
-              format(', {0}', matrix.runner)
-            ) }})
+          context: ${{ github.workflow }} / ${{ github.job }} (${{ case(matrix.version != '', format('{0} {1}', matrix.os, matrix.version), matrix.os) }}, ${{ matrix.arch }}${{ case(matrix.os == 'freebsd', '', format(', {0}', matrix.runner)) }})
       - uses: actions/checkout@v6.0.2
       - name: Cache Go
         uses: actions/cache@v5.0.3
@@ -124,7 +117,7 @@ jobs:
           architecture: ${{ matrix.arch }}
           version: ${{ matrix.version }}
           run: |
-            env ASSUME_ALWAYS_YES=yes pkg install -y ca_root_nss minisign
+            sudo -n pkg install -y ca_root_nss minisign
             if [ ! -f /etc/ssl/cert.pem ] && [ -f /usr/local/share/certs/ca-root-nss.crt ]; then
               sudo -n mkdir -p /etc/ssl
               sudo -n ln -sf /usr/local/share/certs/ca-root-nss.crt /etc/ssl/cert.pem
