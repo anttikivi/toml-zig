@@ -46,6 +46,9 @@ const sha256_hashes = std.StaticStringMap(*const [Sha256.digest_length * 2]u8).i
     .{ "go1.26.0.freebsd-arm64.tar.gz", "5d92e2d65a543811dca9f76a2b533cbdc051bdd5015bf789b137e2dcc33b2d52" },
     .{ "go1.26.0.linux-amd64.tar.gz", "aac1b08a0fb0c4e0a7c1555beb7b59180b05dfc5a3d62e40e9de90cd42f88235" },
     .{ "go1.26.0.linux-arm64.tar.gz", "bd03b743eb6eb4193ea3c3fd3956546bf0e3ca5b7076c8226334afe6b75704cd" },
+    .{ "go1.26.0.netbsd-amd64.tar.gz", "22fc488ddd2c5958378fba2560866d6dae298160ba198e51ca5b998dc77b92f1" },
+    .{ "go1.26.0.netbsd-arm.tar.gz", "1c70fd89c12dfda71f755dae1d7796f14702442b50ef2831117a641358276c5a" },
+    .{ "go1.26.0.netbsd-arm64.tar.gz", "379d6ef6dfa8b67a7776744a536e69a1dc0fe5aeed48eb882ac71f89a98ba8ab" },
     .{ "go1.26.0.windows-amd64.zip", "9bbe0fc64236b2b51f6255c05c4232532b8ecc0e6d2e00950bd3021d8a4d07d4" },
     .{ "go1.26.0.windows-arm64.zip", "73bdbb9f64aa152758024485c5243a1098182bb741fcc603b6fb664ee5e0fe35" },
 });
