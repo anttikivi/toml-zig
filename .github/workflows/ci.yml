@@ -61,7 +61,10 @@ jobs:
             ${{ github.workflow }} / ${{ github.job }} (${{ case(
               matrix.version != '', format('{0} {1}', matrix.os, matrix.version),
               matrix.os
-            ) }}, ${{ matrix.arch }}, ${{ matrix.runner }})
+            ) }}, ${{ matrix.arch }}${{ case(
+              matrix.os == 'freebsd', ''
+              format(', {0}', matrix.runner)
+            ) }})
       - uses: actions/checkout@v6.0.2
       - name: Cache Go
         uses: actions/cache@v5.0.3
