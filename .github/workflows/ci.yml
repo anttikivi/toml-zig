@@ -1,12 +1,8 @@
-name: CI
+name: ci
 
 on:
   push:
-  pull_request:
-
-concurrency:
-  group: ${{ github.head_ref || github.run_id }}-${{ github.actor }}
-  cancel-in-progress: true
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -61,7 +57,7 @@ jobs:
       - uses: anttikivi/forgejo-status@v0.1.2
         with:
           token: ${{ secrets.CODEBERG_TOKEN }}
-          context: "CI / test (${{ matrix.os }}, ${{ matrix.arch }}, ${{ matrix.runner }})"
+          context: ${{ github.workflow }} / ${{ github.job }} (${{ case(matrix.version, format('{0} {1}', matrix.os, matrix.version), matrix.os) }}, ${{ matrix.arch }}, ${{ matrix.runner }})
       - uses: actions/checkout@v6.0.2
       - name: Cache Go
         uses: actions/cache@v5.0.3
