@@ -121,6 +121,10 @@ jobs:
           architecture: ${{ matrix.arch }}
           version: ${{ matrix.version }}
           run: |
-            sudo -n pkg install -y minisign
+            env ASSUME_ALWAYS_YES=yes pkg install -y ca_root_nss minisign
+            if [ ! -f /etc/ssl/cert.pem ] && [ -f /usr/local/share/certs/ca-root-nss.crt ]; then
+              sudo -n mkdir -p /etc/ssl
+              sudo -n ln -sf /usr/local/share/certs/ca-root-nss.crt /etc/ssl/cert.pem
+            fi
             ./zig build fetch-toml-test
             ./zig build test --summary all
