@@ -82,7 +82,7 @@ pub const Diagnostics = struct {
 const Utf8Error = Allocator.Error || error{ InvalidUtf8, Reported };
 
 const Parsed = struct {
-    arena: std.heap.ArenaAllocator,
+    arena_allocator: std.heap.ArenaAllocator,
     root: Table,
 
     // The input buffer of the parsed TOML document. It is either borrowed or
@@ -90,24 +90,24 @@ const Parsed = struct {
     // input: []const u8,
 
     pub fn deinit(self: *@This()) void {
-        self.arena.deinit();
+        self.arena_allocator.deinit();
         self.* = undefined;
     }
 };
 
 pub fn decode(gpa: Allocator, input: []const u8, options: DecodeOptions) !Parsed {
-    var arena: std.heap.ArenaAllocator = .init(gpa);
-    const allocator = arena.allocator();
+    var arena_allocator: std.heap.ArenaAllocator = .init(gpa);
+    const arena = arena_allocator.allocator();
 
     if (options.validate_utf8) {
         try validateUtf8(gpa, input, options.diagnostics);
     }
 
-    var parser: Parser = .init(allocator, gpa, input, options);
+    var parser: Parser = .init(arena, gpa, input, options);
     const root = try parser.parse();
 
     return .{
-        .arena = arena,
+        .arena_allocator = arena_allocator,
         .root = root,
         // .input = owned_input,
     };
