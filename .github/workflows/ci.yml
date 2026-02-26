@@ -28,116 +28,112 @@ jobs:
       - shell: pwsh
         run: Invoke-ScriptAnalyzer -Path tools/download_minisign.ps1 -Severity Error,Warning,Information -EnableExit
 
-  test:
-    runs-on: ${{ matrix.runner }}
-    strategy:
-      matrix:
-        include:
-          - { os: "freebsd", arch: "aarch64", version: "14.0", runner: "ubuntu-latest" }
-          - { os: "freebsd", arch: "aarch64", version: "14.3", runner: "ubuntu-latest" }
-          - { os: "freebsd", arch: "aarch64", version: "15.0", runner: "ubuntu-latest" }
-          - { os: "freebsd", arch: "x86_64", version: "14.0", runner: "ubuntu-latest" }
-          - { os: "freebsd", arch: "x86_64", version: "14.3", runner: "ubuntu-latest" }
-          - { os: "freebsd", arch: "x86_64", version: "15.0", runner: "ubuntu-latest" }
-          - { os: "netbsd", arch: "aarch64", version: "10.1", runner: "ubuntu-latest" }
-          - { os: "netbsd", arch: "x86_64", version: "10.1", runner: "ubuntu-latest" }
-          - { os: "linux", arch: "aarch64", runner: "ubuntu-22.04-arm" }
-          - { os: "linux", arch: "aarch64", runner: "ubuntu-24.04-arm" }
-          - { os: "linux", arch: "x86_64", runner: "ubuntu-22.04" }
-          - { os: "linux", arch: "x86_64", runner: "ubuntu-24.04" }
-          - { os: "macos", arch: "aarch64", runner: "macos-14" }
-          - { os: "macos", arch: "aarch64", runner: "macos-15" }
-          - { os: "macos", arch: "aarch64", runner: "macos-26" }
-          - { os: "macos", arch: "x86_64", runner: "macos-15-intel" }
-          - { os: "windows", arch: "aarch64", runner: "windows-11-arm" }
-          - { os: "windows", arch: "x86_64", runner: "windows-2022" }
-          - { os: "windows", arch: "x86_64", runner: "windows-2025" }
-          - { os: "windows", arch: "x86_64", runner: "windows-2025-vs2026" }
-      fail-fast: false
-
+  aarch64-freebsd:
+    runs-on: ubuntu-latest
     steps:
       - uses: anttikivi/forgejo-status@v0.1.2
         with:
           token: ${{ secrets.CODEBERG_TOKEN }}
-          context: ${{ github.workflow }} / ${{ github.job }} (${{ case(matrix.version != '', format('{0} {1}', matrix.os, matrix.version), matrix.os) }}, ${{ matrix.arch }}${{ case(matrix.os == 'freebsd' || matrix.os == 'netbsd', '', format(', {0}', matrix.runner)) }})
       - uses: actions/checkout@v6.0.2
-      - name: Cache Go
-        uses: actions/cache@v5.0.3
-        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
-        with:
-          path: |
-            tools/.go
-          key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.zig', 'tools/file.zig', 'tools/go.zig', 'tools/output.zig') }}
-      - name: Cache Minisign
-        uses: actions/cache@v5.0.3
-        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
-        with:
-          path: |
-            tools/.minisign
-          key: minisign-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/download_minisign.*', 'tools/minisign.*') }}
-      - name: Cache Zig
-        uses: actions/cache@v5.0.3
-        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
-        with:
-          path: |
-            tools/.zig
-          key: zig-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/download_zig.*', 'tools/zig.*') }}
-      - name: Cache toml-test
-        uses: actions/cache@v5.0.3
-        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
-        with:
-          path: |
-            vendor/toml-test
-          key: toml-test-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.zig', 'tools/fetch_toml_test.zig', 'tools/file.zig', 'tools/go.zig', 'tools/output.zig') }}
-      - name: Resolve Homebrew paths
-        id: brew-paths
-        if: ${{ matrix.os == 'macos' }}
-        run: |
-          echo "cache=$(brew --cache)" >> "${GITHUB_OUTPUT}"
-          echo "cellar=$(brew --cellar)" >> "${GITHUB_OUTPUT}"
-      - name: Cache Homebrew
-        id: brew-cache
-        uses: actions/cache@v5.0.3
-        if: ${{ matrix.os == 'macos' && matrix.arch == 'x86_64' }}
-        with:
-          path: |
-            ${{ steps.brew-paths.outputs.cache }}
-            ${{ steps.brew-paths.outputs.cellar }}
-          key: brew-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.github/workflows/ci.yml') }}
-      - run: brew install minisign
-        if: ${{ steps.brew-cache.outputs.cache-hit != 'true' && matrix.os == 'macos' && matrix.arch == 'x86_64' }}
-      - run: brew link minisign
-        if: ${{ steps.brew-cache.outputs.cache-hit == 'true' && matrix.os == 'macos' && matrix.arch == 'x86_64' }}
-      - run: ./zig.ps1 build fetch-toml-test
-        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
-      - run: ./zig.ps1 build test --summary all
-        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
       - uses: cross-platform-actions/action@v0.32.0
-        if: ${{ matrix.os == 'freebsd' || matrix.os == 'netbsd' }}
         with:
-          operating_system: ${{ matrix.os }}
-          architecture: ${{ matrix.arch }}
-          version: ${{ matrix.version }}
-          run: |
-            if [ "${{ matrix.os }}" = "freebsd" ]; then
-              sudo -n env ASSUME_ALWAYS_YES=yes pkg install -y ca_root_nss minisign
-              if [ ! -f /etc/ssl/cert.pem ] && [ -f /usr/local/share/certs/ca-root-nss.crt ]; then
-                sudo -n mkdir -p /etc/ssl
-                sudo -n ln -sf /usr/local/share/certs/ca-root-nss.crt /etc/ssl/cert.pem
-              fi
-            elif [ "${{ matrix.os }}" = "netbsd" ]; then
-              if ! sudo -n pkgin -y install minisign mozilla-rootcerts; then
-                sudo -n pkgin -y install minisign ca-certificates
-              fi
+          operating_system: freebsd
+          architecture: aarch64
+          version: 14.0
+          run: sh ci/freebsd.sh
 
-              if command -v certctl >/dev/null 2>&1; then
-                sudo -n certctl rehash
-              fi
+  aarch64-linux:
+    runs-on: ubuntu-22.04-arm
+    steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
+      - run: sh ci/linux.sh
 
-              if [ ! -f /etc/openssl/certs/ca-certificates.crt ] && [ -f /usr/pkg/etc/openssl/certs/ca-certificates.crt ]; then
-                sudo -n mkdir -p /etc/openssl/certs
-                sudo -n ln -sf /usr/pkg/etc/openssl/certs/ca-certificates.crt /etc/openssl/certs/ca-certificates.crt
-              fi
-            fi
-            ./zig build fetch-toml-test
-            ./zig build test -Dtoml-test-timeout=10s --summary all
+  aarch64-macos:
+    runs-on: macos-14
+    steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
+      - run: sh ci/aarch64-macos.sh
+
+  aarch64-netbsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
+      - uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: netbsd
+          architecture: aarch64
+          version: 10.1
+          run: sh ci/netbsd.sh
+
+  aarch64-windows:
+    runs-on: windows-11-arm
+    steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
+      - run: .\ci\windows.ps1
+
+  x86_64-freebsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
+      - uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: freebsd
+          architecture: x86_64
+          version: 14.0
+          run: sh ci/freebsd.sh
+
+  x86_64-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
+      - run: sh ci/linux.sh
+
+  x86_64-macos:
+    runs-on: macos-15-intel
+    steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
+      - run: sh ci/x86_64-macos.sh
+
+  x86_64-netbsd:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
+      - uses: cross-platform-actions/action@v0.32.0
+        with:
+          operating_system: netbsd
+          architecture: x86_64
+          version: 10.1
+          run: sh ci/netbsd.sh
+
+  x86_64-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+      - uses: actions/checkout@v6.0.2
+      - run: .\ci\windows.ps1
