@@ -81,10 +81,7 @@ pub fn invoke(gpa: Allocator, args: []const []const u8, gopath: []const u8) !voi
     child.env_map = &env_map;
 
     try child.spawn();
-    errdefer _ = child.kill() catch |err| switch (err) {
-        error.AlreadyTerminated => {},
-        else => @panic("failed to kill go"),
-    };
+    errdefer _ = child.kill() catch {};
 
     const term = try child.wait();
 
@@ -205,10 +202,7 @@ fn captureStdout(gpa: Allocator, argv: []const []const u8) ![]const u8 {
     child.stderr_behavior = .Pipe;
 
     try child.spawn();
-    errdefer _ = child.kill() catch |err| switch (err) {
-        error.AlreadyTerminated => {},
-        else => @panic("failed to kill go"),
-    };
+    errdefer _ = child.kill() catch {};
 
     try child.collectOutput(gpa, &child_stdout, &child_stderr, 256);
     const term = try child.wait();
