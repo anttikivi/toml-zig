@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 const std = @import("std");
+const ArrayList = std.ArrayList;
+
+const bench_data = @import("test/bench_data.zig");
 const toml = @import("src/root.zig");
 
 const toml_test_version: std.SemanticVersion = .{ .major = 2, .minor = 1, .patch = 0 };
@@ -11,11 +14,39 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const target = b.standardTargetOptions(.{});
 
+    const benchmarks_list = b.option([]const u8, "benchmarks", "A comma-separated list of benchmarks to run") orelse blk: {
+        var result: ArrayList(u8) = .empty;
+        var i: usize = 0;
+        inline for (std.meta.fieldNames(bench_data.Size)) |size| {
+            inline for (std.meta.fieldNames(bench_data.Pattern)) |pattern| {
+                if (i != 0) {
+                    result.append(b.allocator, ',') catch @panic("OOM");
+                }
+
+                result.appendSlice(b.allocator, size) catch @panic("OOM");
+                result.append(b.allocator, '-') catch @panic("OOM");
+                result.appendSlice(b.allocator, pattern) catch @panic("OOM");
+
+                i += 1;
+            }
+        }
+        break :blk result.toOwnedSlice(b.allocator) catch @panic("OOM");
+    };
+    const bench_seed = b.option(
+        u64,
+        "bench-seed",
+        "Seed to use for generating the benchmark input data when randomizing the generation is enabled",
+    ) orelse 0xdead_beef;
     const min_index_capacity = b.option(
         u32,
         "min-index-capacity",
         "Minimum capacity to initially allocate for the TOML hash table indices",
     ) orelse 16;
+    const random_bench = b.option(
+        bool,
+        "random-bench",
+        "Use random number generator for generating the benchmark input values instead of deterministic calculation",
+    ) orelse false;
     const table_index_threshold = b.option(
         u32,
         "table-index-threshold",
@@ -199,6 +230,40 @@ pub fn build(b: *std.Build) void {
             version_step.dependOn(&run.step);
             step.dependOn(version_step);
         }
+    }
+
+    const bench_data_path = b.pathJoin(&.{ "test", ".bench" });
+    const bench_options = b.addOptions();
+    bench_options.addOption([]const u8, "data_path", bench_data_path);
+    bench_options.addOption(u64, "bench_seed", bench_seed);
+    bench_options.addOption(bool, "random_bench", random_bench);
+    {
+        const count = std.mem.count(u8, benchmarks_list, ",");
+        const benchmarks = b.allocator.alloc([]const u8, count + 1) catch @panic("OOM");
+
+        var it = std.mem.splitScalar(u8, benchmarks_list, ',');
+        var i: usize = 0;
+        while (it.next()) |fixture| : (i += 1) {
+            benchmarks[i] = fixture;
+        }
+
+        bench_options.addOption([]const []const u8, "benchmarks", benchmarks);
+    }
+    {
+        const step = b.step("generate-bench-data", "Generate data for running the benchmarks");
+        const generate_bench_data = b.addExecutable(.{
+            .name = "generate-bench-data",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("test/generate_bench_data.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+
+        generate_bench_data.root_module.addOptions("bench_options", bench_options);
+
+        const run = b.addRunArtifact(generate_bench_data);
+        step.dependOn(&run.step);
     }
 
     // Formatting tasks
