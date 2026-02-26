@@ -39,7 +39,7 @@ jobs:
         with:
           operating_system: freebsd
           architecture: aarch64
-          version: 14.0
+          version: "14.0"
           run: sh ci/freebsd.sh
 
   aarch64-linux:
@@ -71,7 +71,7 @@ jobs:
         with:
           operating_system: netbsd
           architecture: aarch64
-          version: 10.1
+          version: "10.1"
           run: sh ci/netbsd.sh
 
   aarch64-windows:
@@ -94,7 +94,7 @@ jobs:
         with:
           operating_system: freebsd
           architecture: x86_64
-          version: 14.0
+          version: "14.0"
           run: sh ci/freebsd.sh
 
   x86_64-linux:
@@ -126,7 +126,7 @@ jobs:
         with:
           operating_system: netbsd
           architecture: x86_64
-          version: 10.1
+          version: "10.1"
           run: sh ci/netbsd.sh
 
   x86_64-windows:
