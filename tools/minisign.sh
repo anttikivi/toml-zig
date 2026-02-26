@@ -22,13 +22,23 @@ is_right_version() {
         ;;
     esac
 
-    found_version="$("$1" -v 2>/dev/null)" || return 1
-    case "${found_version}" in
-    *"${MINISIGN_VERSION}"*)
+    case "$(echo "${MINISIGN_REQUIRE_STRICT_VERSION:-}" | tr '[:upper:]' '[:lower:]')" in
+    1 | true | yes)
+        found_version="$("$1" -v 2>/dev/null)" || return 1
+        case "${found_version}" in
+        *"${MINISIGN_VERSION}"*)
+            return 0
+            ;;
+        esac
+        return 1
+        ;;
+    "")
+        return 0
+        ;;
+    *)
         return 0
         ;;
     esac
-    return 1
 }
 
 find_minisign() {

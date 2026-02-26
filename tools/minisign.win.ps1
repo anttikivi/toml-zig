@@ -25,6 +25,17 @@ function Test-RightVersion {
         return $false
     }
 
+    $strictVersion = $false
+    $strictEnv = $env:MINISIGN_REQUIRE_STRICT_VERSION
+    if ($null -ne $strictEnv) {
+        $strictEnvLower = $strictEnv.ToLowerInvariant()
+        $strictVersion = ($strictEnvLower -eq "1" -or $strictEnvLower -eq "true" -or $strictEnvLower -eq "yes")
+    }
+
+    if (-not $strictVersion) {
+        return $true
+    }
+
     try {
         $foundVersion = & $MinisignPath -v 2>$null
         return ($foundVersion -match [regex]::Escape($MINISIGN_VERSION))
