@@ -125,7 +125,7 @@ main() {
     _dest_dir="$2"
 
     case "$(uname -m)" in
-    aarch64 | arm64)
+    aarch64 | arm64 | evbarm)
         _arch="aarch64"
         ;;
     arm* | earm*)
