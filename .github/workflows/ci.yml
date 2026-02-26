@@ -140,4 +140,4 @@ jobs:
               fi
             fi
             ./zig build fetch-toml-test
-            ./zig build test --summary all
+            ./zig build test -Dtoml-test-timeout=3s --summary all
