@@ -4,6 +4,11 @@ set -eux
 
 sudo -n pkgin -y install go minisign
 
+export PATH="/usr/pkg/bin:/usr/pkg/go/bin:${PATH}"
+
+command -v go
+go version
+
 if ! sudo -n pkgin -y install mozilla-rootcerts; then
     sudo -n pkgin -y install ca-certificates
 fi
