@@ -18,6 +18,11 @@ pub fn build(b: *std.Build) void {
         "table-index-threshold",
         "Threshold for the parsed TOML tables for switching from linear lookup to hashes. Must be a power of 2",
     ) orelse 64;
+    const toml_test_timeout = b.option(
+        []const u8,
+        "toml-test-timeout",
+        "Timeout value to pass to 'toml-test' runs. The value is passed to 'toml-test' as is. Default is '1s'",
+    ) orelse "1s";
 
     const options = b.addOptions();
     options.addOption(u32, "min_index_capacity", min_index_capacity);
@@ -177,7 +182,15 @@ pub fn build(b: *std.Build) void {
                 step.dependOn(&b.addFail(b.fmt("invalid TOML version: {s}", .{field.name})).step);
                 return;
             };
-            const run = b.addSystemCommand(&[_][]const u8{ toml_test, "test", "-toml", version_arg, "-decoder" });
+            const run = b.addSystemCommand(&[_][]const u8{
+                toml_test,
+                "test",
+                "-toml",
+                version_arg,
+                "-timeout",
+                toml_test_timeout,
+                "-decoder",
+            });
             run.addFileArg(decoder.getEmittedBin());
             run.setCwd(b.path("."));
             version_step.dependOn(&run.step);
