@@ -33,12 +33,14 @@ jobs:
     strategy:
       matrix:
         include:
-          - { os: "freebsd", arch: "aarch64", version: "14.0", runner: "ubuntu-24.04-arm" }
-          - { os: "freebsd", arch: "aarch64", version: "14.3", runner: "ubuntu-24.04-arm" }
-          - { os: "freebsd", arch: "aarch64", version: "15.0", runner: "ubuntu-24.04-arm" }
+          - { os: "freebsd", arch: "aarch64", version: "14.0", runner: "ubuntu-latest" }
+          - { os: "freebsd", arch: "aarch64", version: "14.3", runner: "ubuntu-latest" }
+          - { os: "freebsd", arch: "aarch64", version: "15.0", runner: "ubuntu-latest" }
           - { os: "freebsd", arch: "x86_64", version: "14.0", runner: "ubuntu-latest" }
           - { os: "freebsd", arch: "x86_64", version: "14.3", runner: "ubuntu-latest" }
           - { os: "freebsd", arch: "x86_64", version: "15.0", runner: "ubuntu-latest" }
+          - { os: "netbsd", arch: "aarch64", version: "10.1", runner: "ubuntu-latest" }
+          - { os: "netbsd", arch: "x86_64", version: "10.1", runner: "ubuntu-latest" }
           - { os: "linux", arch: "aarch64", runner: "ubuntu-22.04-arm" }
           - { os: "linux", arch: "aarch64", runner: "ubuntu-24.04-arm" }
           - { os: "linux", arch: "x86_64", runner: "ubuntu-22.04" }
@@ -57,36 +59,32 @@ jobs:
       - uses: anttikivi/forgejo-status@v0.1.2
         with:
           token: ${{ secrets.CODEBERG_TOKEN }}
-          context: >-
-            ${{ github.workflow }} / ${{ github.job }} (${{ case(
-              matrix.version != '', format('{0} {1}', matrix.os, matrix.version),
-              matrix.os
-            ) }}, ${{ matrix.arch }}, ${{ matrix.runner }})
+          context: ${{ github.workflow }} / ${{ github.job }} (${{ case(matrix.version != '', format('{0} {1}', matrix.os, matrix.version), matrix.os) }}, ${{ matrix.arch }}${{ case(matrix.os == 'freebsd', '', format(', {0}', matrix.runner)) }})
       - uses: actions/checkout@v6.0.2
       - name: Cache Go
         uses: actions/cache@v5.0.3
-        if: ${{ matrix.os != 'freebsd' }}
+        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
         with:
           path: |
             tools/.go
           key: go-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.zig', 'tools/file.zig', 'tools/go.zig', 'tools/output.zig') }}
       - name: Cache Minisign
         uses: actions/cache@v5.0.3
-        if: ${{ matrix.os != 'freebsd' }}
+        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
         with:
           path: |
             tools/.minisign
           key: minisign-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/download_minisign.*', 'tools/minisign.*') }}
       - name: Cache Zig
         uses: actions/cache@v5.0.3
-        if: ${{ matrix.os != 'freebsd' }}
+        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
         with:
           path: |
             tools/.zig
           key: zig-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('tools/download_zig.*', 'tools/zig.*') }}
       - name: Cache toml-test
         uses: actions/cache@v5.0.3
-        if: ${{ matrix.os != 'freebsd' }}
+        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
         with:
           path: |
             vendor/toml-test
@@ -111,16 +109,35 @@ jobs:
       - run: brew link minisign
         if: ${{ steps.brew-cache.outputs.cache-hit == 'true' && matrix.os == 'macos' && matrix.arch == 'x86_64' }}
       - run: ./zig.ps1 build fetch-toml-test
-        if: ${{ matrix.os != 'freebsd' }}
+        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
       - run: ./zig.ps1 build test --summary all
-        if: ${{ matrix.os != 'freebsd' }}
+        if: ${{ matrix.os == 'linux' || matrix.os == 'macos' || matrix.os == 'windows' }}
       - uses: cross-platform-actions/action@v0.32.0
-        if: ${{ matrix.os == 'freebsd' }}
+        if: ${{ matrix.os == 'freebsd' || matrix.os == 'netbsd' }}
         with:
           operating_system: ${{ matrix.os }}
           architecture: ${{ matrix.arch }}
           version: ${{ matrix.version }}
           run: |
-            sudo -n pkg install -y minisign
+            if [ "${{ matrix.os }}" = "freebsd" ]; then
+              sudo -n env ASSUME_ALWAYS_YES=yes pkg install -y ca_root_nss minisign
+              if [ ! -f /etc/ssl/cert.pem ] && [ -f /usr/local/share/certs/ca-root-nss.crt ]; then
+                sudo -n mkdir -p /etc/ssl
+                sudo -n ln -sf /usr/local/share/certs/ca-root-nss.crt /etc/ssl/cert.pem
+              fi
+            elif [ "${{ matrix.os }}" = "netbsd" ]; then
+              if ! sudo -n pkgin -y install minisign mozilla-rootcerts; then
+                sudo -n pkgin -y install minisign ca-certificates
+              fi
+
+              if command -v certctl >/dev/null 2>&1; then
+                sudo -n certctl rehash
+              fi
+
+              if [ ! -f /etc/openssl/certs/ca-certificates.crt ] && [ -f /usr/pkg/etc/openssl/certs/ca-certificates.crt ]; then
+                sudo -n mkdir -p /etc/openssl/certs
+                sudo -n ln -sf /usr/pkg/etc/openssl/certs/ca-certificates.crt /etc/openssl/certs/ca-certificates.crt
+              fi
+            fi
             ./zig build fetch-toml-test
-            ./zig build test --summary all
+            ./zig build test -Dtoml-test-timeout=3s --summary all

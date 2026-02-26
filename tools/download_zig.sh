@@ -124,11 +124,24 @@ main() {
     _zig_version="$1"
     _dest_dir="$2"
 
-    if [ "$(uname -m)" = "arm64" ] || [ "$(uname -m)" = "aarch64" ]; then
+    case "$(uname -m)" in
+    aarch64 | arm64)
         _arch="aarch64"
-    else
+        ;;
+    arm* | earm*)
+        _arch="arm"
+        ;;
+    i386 | i486 | i586 | i686 | x86)
+        _arch="x86"
+        ;;
+    x86_64 | amd64)
         _arch="x86_64"
-    fi
+        ;;
+    *)
+        echo "unsupported architecture: $(uname -m)" >&2
+        return 1
+        ;;
+    esac
 
     case "$(uname)" in
     Darwin)
@@ -137,6 +150,10 @@ main() {
         ;;
     FreeBSD)
         _os="freebsd"
+        _archive_extension=".tar.xz"
+        ;;
+    NetBSD)
+        _os="netbsd"
         _archive_extension=".tar.xz"
         ;;
     Linux)

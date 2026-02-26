@@ -121,10 +121,7 @@ fn isInstalled(gpa: Allocator, path: []const u8) !bool {
     child.stderr_behavior = .Pipe;
 
     try child.spawn();
-    errdefer _ = child.kill() catch |err| switch (err) {
-        error.AlreadyTerminated => {},
-        else => @panic("failed to kill toml-test"),
-    };
+    errdefer _ = child.kill() catch {};
 
     try child.collectOutput(gpa, &child_stdout, &child_stderr, 256);
     const term = try child.wait();
