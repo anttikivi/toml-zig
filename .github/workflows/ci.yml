@@ -52,7 +52,7 @@ jobs:
       - run: sh ci/linux.sh
 
   aarch64-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: anttikivi/forgejo-status@v0.1.2
         with:
