@@ -1,12 +1,11 @@
 .{
     .name = .toml,
-    .version = "0.1.0-dev",
+    .version = "0.1.0",
     .fingerprint = 0x12c55c53aba28499,
     .minimum_zig_version = "0.15.2",
     .paths = .{
         "build.zig",
         "build.zig.zon",
         "src",
-        "tools",
     },
 }
