@@ -2,8 +2,10 @@
 
 set -eux
 
-if ! sudo -n pkgin -y install minisign mozilla-rootcerts; then
-    sudo -n pkgin -y install minisign ca-certificates
+sudo -n pkgin -y install minisign
+
+if ! sudo -n pkgin -y install mozilla-rootcerts; then
+    sudo -n pkgin -y install ca-certificates
 fi
 
 if command -v certctl >/dev/null 2>&1; then

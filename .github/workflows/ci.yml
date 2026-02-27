@@ -72,7 +72,7 @@ jobs:
           operating_system: netbsd
           architecture: aarch64
           version: "10.1"
-          run: sh ci/netbsd.sh
+          run: sh ci/aarch64-netbsd.sh
 
   aarch64-windows:
     runs-on: windows-11-arm
@@ -127,7 +127,7 @@ jobs:
           operating_system: netbsd
           architecture: x86_64
           version: "10.1"
-          run: sh ci/netbsd.sh
+          run: sh ci/x86_64-netbsd.sh
 
   x86_64-windows:
     runs-on: windows-2022
