@@ -19,5 +19,5 @@ jobs:
     runs-on: codeberg-tiny
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v6.0.2
-      - uses: https://codeberg.org/mlugg/setup-zig@v2.2.0
+      - uses: https://codeberg.org/mlugg/setup-zig@v2.2.1
       - run: zig build test-unit --summary all
