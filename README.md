@@ -75,9 +75,25 @@ _ = toml.decode(gpa, input, .{
 
 ## Installing
 
-You can use Zig to use this library:
+Add the library to your `build.zig.zon`:
 
     zig fetch --save git+https://codeberg.org/anttikivi/toml-zig#v0.1.0
+
+In your `build.zig`, add the library as a module like this:
+
+```zig
+const toml_dep = b.dependency("toml-zig", .{
+    .target = target,
+    .optimize = optimize,
+});
+exe.root_module.addImport("toml", toml_dep.module("toml"));
+```
+
+Now you can use the library in your Zig code by importing it as
+
+```zig
+const toml = @import("toml");
+```
 
 ## Building
 
