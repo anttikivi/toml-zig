@@ -20,6 +20,9 @@ pub fn main() !void {
 
     const cwd = std.fs.cwd();
 
+    var dir = try cwd.makeOpenPath(bench_options.data_path, .{});
+    defer dir.close();
+
     inline for (bench_options.benchmarks) |fixture| {
         std.debug.print("generating {s}\n", .{fixture});
 
@@ -44,9 +47,6 @@ pub fn main() !void {
             },
         };
         defer gpa.free(data);
-
-        var dir = try cwd.makeOpenPath(bench_options.data_path, .{});
-        defer dir.close();
 
         const filename = try if (bench_options.random_bench) std.fmt.allocPrint(
             gpa,

@@ -265,6 +265,23 @@ pub fn build(b: *std.Build) void {
         const run = b.addRunArtifact(generate_bench_data);
         step.dependOn(&run.step);
     }
+    {
+        const step = b.step("bench", "Run the bechmarks for the current revision");
+        const bench = b.addExecutable(.{
+            .name = "benchmark",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("test/benchmark.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+
+        bench.root_module.addOptions("bench_options", bench_options);
+        bench.root_module.addImport("toml", toml_mod);
+
+        const run = b.addRunArtifact(bench);
+        step.dependOn(&run.step);
+    }
 
     // Formatting tasks
     const fmt_include_paths = &.{"."};
