@@ -39,13 +39,25 @@ pub fn main() !void {
             pattern_name,
         ) orelse @panic("invalid benchmark pattern in " ++ fixture);
 
-        const data = switch (pattern) {
-            .flat_kv => try generateFlatKv(gpa, size.targetSize()),
+        var prng = std.Random.DefaultPrng.init(bench_options.bench_seed);
+        const rand = prng.random();
+
+        const data = if (bench_options.random_bench) switch (pattern) {
+            .array_tables => try generateArrayTablesRandom(gpa, rand, size.targetSize()),
+            .flat_kv => try generateFlatKvRandom(gpa, rand, size.targetSize()),
+            else => blk: {
+                std.debug.print("not yet implemented\n", .{});
+                break :blk "";
+            },
+        } else switch (pattern) {
+            .array_tables => try generateArrayTablesDeterministic(gpa, size.targetSize()),
+            .flat_kv => try generateFlatKvDeterministic(gpa, size.targetSize()),
             else => blk: {
                 std.debug.print("not yet implemented\n", .{});
                 break :blk "";
             },
         };
+
         defer gpa.free(data);
 
         const filename = try if (bench_options.random_bench) std.fmt.allocPrint(
@@ -69,24 +81,71 @@ pub fn main() !void {
     }
 }
 
-fn generateFlatKv(gpa: Allocator, target_size: usize) ![]const u8 {
+fn generateArrayTablesDeterministic(gpa: Allocator, target_size: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
     errdefer result.deinit(gpa);
 
-    var prng = std.Random.DefaultPrng.init(bench_options.bench_seed);
-    const rand = prng.random();
+    const array_names = [_][]const u8{ "items", "users", "products", "entries" };
 
     var i: usize = 0;
     while (result.items.len < target_size) : (i += 1) {
-        if (bench_options.random_bench) {
-            const s = try generateKeyValueRandom(gpa, rand, i);
-            defer gpa.free(s);
-            try result.appendSlice(gpa, s);
-        } else {
-            const s = try generateKeyValueDeterministic(gpa, i);
+        const name = array_names[i % array_names.len];
+        try appendPrint(gpa, &result, "\n[[{s}]]\n", .{name});
+        const s = try generateKeyValueDeterministic(gpa, i);
+        defer gpa.free(s);
+        try result.appendSlice(gpa, s);
+        try appendPrint(gpa, &result, "name = \"item_{d}\"\n", .{i});
+        try appendPrint(gpa, &result, "enabled = {s}\n", .{if (i % 2 == 0) "true" else "false"});
+        try appendPrint(gpa, &result, "tags = [\"tag{d}\", \"tag{d}\", \"common\"]\n\n", .{ i % 10, (i + 1) % 10 });
+    }
+
+    return result.toOwnedSlice(gpa);
+}
+
+fn generateArrayTablesRandom(gpa: Allocator, rand: std.Random, target_size: usize) ![]const u8 {
+    var result: ArrayList(u8) = .empty;
+    errdefer result.deinit(gpa);
+
+    var i: usize = 0;
+    while (result.items.len < target_size) : (i += 1) {
+        var buf: [12]u8 = undefined;
+        randomString(rand, &buf);
+        try result.appendSlice(gpa, "[[");
+        try appendRandomString(gpa, rand, &result, 4, 13);
+        try result.appendSlice(gpa, "]]\n");
+        for (0..4) |j| {
+            const s = try generateKeyValueDeterministic(gpa, j);
             defer gpa.free(s);
             try result.appendSlice(gpa, s);
         }
+    }
+
+    return result.toOwnedSlice(gpa);
+}
+
+fn generateFlatKvDeterministic(gpa: Allocator, target_size: usize) ![]const u8 {
+    var result: ArrayList(u8) = .empty;
+    errdefer result.deinit(gpa);
+
+    var i: usize = 0;
+    while (result.items.len < target_size) : (i += 1) {
+        const s = try generateKeyValueDeterministic(gpa, i);
+        defer gpa.free(s);
+        try result.appendSlice(gpa, s);
+    }
+
+    return result.toOwnedSlice(gpa);
+}
+
+fn generateFlatKvRandom(gpa: Allocator, rand: std.Random, target_size: usize) ![]const u8 {
+    var result: ArrayList(u8) = .empty;
+    errdefer result.deinit(gpa);
+
+    var i: usize = 0;
+    while (result.items.len < target_size) : (i += 1) {
+        const s = try generateKeyValueRandom(gpa, rand, i);
+        defer gpa.free(s);
+        try result.appendSlice(gpa, s);
     }
 
     return result.toOwnedSlice(gpa);
