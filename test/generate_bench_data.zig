@@ -42,23 +42,27 @@ pub fn main() !void {
         var prng = std.Random.DefaultPrng.init(bench_options.bench_seed);
         const rand = prng.random();
 
+        var arena_allocator: std.heap.ArenaAllocator = .init(gpa);
+        defer arena_allocator.deinit();
+        const arena = arena_allocator.allocator();
+
         const data = if (bench_options.random_bench) switch (pattern) {
-            .array_tables => try generateArrayTablesRandom(gpa, rand, size.targetSize()),
-            .flat_kv => try generateFlatKvRandom(gpa, rand, size.targetSize()),
+            .array_tables => try generateArrayTablesRandom(arena, rand, size.targetSize()),
+            .flat_kv => try generateFlatKvRandom(arena, rand, size.targetSize()),
             else => blk: {
                 std.debug.print("not yet implemented\n", .{});
                 break :blk "";
             },
         } else switch (pattern) {
-            .array_tables => try generateArrayTablesDeterministic(gpa, size.targetSize()),
-            .flat_kv => try generateFlatKvDeterministic(gpa, size.targetSize()),
+            .array_tables => try generateArrayTablesDeterministic(arena, size.targetSize()),
+            .flat_kv => try generateFlatKvDeterministic(arena, size.targetSize()),
             else => blk: {
                 std.debug.print("not yet implemented\n", .{});
                 break :blk "";
             },
         };
 
-        defer gpa.free(data);
+        // defer gpa.free(data);
 
         const filename = try if (bench_options.random_bench) std.fmt.allocPrint(
             gpa,
@@ -81,121 +85,121 @@ pub fn main() !void {
     }
 }
 
-fn generateArrayTablesDeterministic(gpa: Allocator, target_size: usize) ![]const u8 {
+fn generateArrayTablesDeterministic(arena: Allocator, target_size: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
-    errdefer result.deinit(gpa);
 
     const array_names = [_][]const u8{ "items", "users", "products", "entries" };
 
     var i: usize = 0;
     while (result.items.len < target_size) : (i += 1) {
         const name = array_names[i % array_names.len];
-        try appendPrint(gpa, &result, "\n[[{s}]]\n", .{name});
-        const s = try generateKeyValueDeterministic(gpa, i);
-        defer gpa.free(s);
-        try result.appendSlice(gpa, s);
-        try appendPrint(gpa, &result, "name = \"item_{d}\"\n", .{i});
-        try appendPrint(gpa, &result, "enabled = {s}\n", .{if (i % 2 == 0) "true" else "false"});
-        try appendPrint(gpa, &result, "tags = [\"tag{d}\", \"tag{d}\", \"common\"]\n\n", .{ i % 10, (i + 1) % 10 });
+        try appendPrint(arena, &result, "[[{s}]]\n", .{name});
+        const s = try generateKeyValueDeterministic(arena, i);
+        defer arena.free(s);
+        try result.appendSlice(arena, s);
+        try appendPrint(arena, &result, "name = \"item_{d}\"\n", .{i});
+        try appendPrint(arena, &result, "enabled = {s}\n", .{if (i % 2 == 0) "true" else "false"});
+        try appendPrint(arena, &result, "tags = [\"tag{d}\", \"tag{d}\", \"common\"]\n\n", .{ i % 10, (i + 1) % 10 });
     }
 
-    return result.toOwnedSlice(gpa);
+    return result.toOwnedSlice(arena);
 }
 
-fn generateArrayTablesRandom(gpa: Allocator, rand: std.Random, target_size: usize) ![]const u8 {
+fn generateArrayTablesRandom(arena: Allocator, rand: std.Random, target_size: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
-    errdefer result.deinit(gpa);
+    errdefer result.deinit(arena);
+
+    var array_names: ArrayList([]const u8) = .empty;
+    const tables = rand.intRangeAtMost(usize, 4, 9);
+
+    for (0..tables) |_| {
+        const s = try randomStringRange(arena, rand, 4, 10);
+        try array_names.append(arena, s);
+    }
 
     var i: usize = 0;
     while (result.items.len < target_size) : (i += 1) {
-        var buf: [12]u8 = undefined;
-        randomString(rand, &buf);
-        try result.appendSlice(gpa, "[[");
-        try appendRandomString(gpa, rand, &result, 4, 13);
-        try result.appendSlice(gpa, "]]\n");
-        for (0..4) |j| {
-            const s = try generateKeyValueDeterministic(gpa, j);
-            defer gpa.free(s);
-            try result.appendSlice(gpa, s);
+        const name = array_names.items[i % array_names.items.len];
+        try appendPrint(arena, &result, "[[{s}]]\n", .{name});
+        const keys = rand.intRangeAtMost(usize, 2, 7);
+        for (0..keys) |j| {
+            const s = try generateKeyValueDeterministic(arena, j);
+            try result.appendSlice(arena, s);
         }
+        try result.append(arena, '\n');
     }
 
-    return result.toOwnedSlice(gpa);
+    return result.toOwnedSlice(arena);
 }
 
-fn generateFlatKvDeterministic(gpa: Allocator, target_size: usize) ![]const u8 {
+fn generateFlatKvDeterministic(arena: Allocator, target_size: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
-    errdefer result.deinit(gpa);
 
     var i: usize = 0;
     while (result.items.len < target_size) : (i += 1) {
-        const s = try generateKeyValueDeterministic(gpa, i);
-        defer gpa.free(s);
-        try result.appendSlice(gpa, s);
+        const s = try generateKeyValueDeterministic(arena, i);
+        try result.appendSlice(arena, s);
     }
 
-    return result.toOwnedSlice(gpa);
+    return result.toOwnedSlice(arena);
 }
 
-fn generateFlatKvRandom(gpa: Allocator, rand: std.Random, target_size: usize) ![]const u8 {
+fn generateFlatKvRandom(arena: Allocator, rand: std.Random, target_size: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
-    errdefer result.deinit(gpa);
 
     var i: usize = 0;
     while (result.items.len < target_size) : (i += 1) {
-        const s = try generateKeyValueRandom(gpa, rand, i);
-        defer gpa.free(s);
-        try result.appendSlice(gpa, s);
+        const s = try generateKeyValueRandom(arena, rand, i);
+        try result.appendSlice(arena, s);
     }
 
-    return result.toOwnedSlice(gpa);
+    return result.toOwnedSlice(arena);
 }
 
-fn generateKeyValueRandom(gpa: Allocator, rand: std.Random, i: usize) ![]const u8 {
+fn generateKeyValueRandom(arena: Allocator, rand: std.Random, i: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
-    errdefer result.deinit(gpa);
 
     switch (rand.uintAtMost(u8, 4)) {
         0 => {
-            try appendRandomString(gpa, rand, &result, 3, 20);
-            try appendPrint(gpa, &result, "_{d} = \"", .{i});
-            try appendRandomString(gpa, rand, &result, 3, 20);
-            try result.appendSlice(gpa, "\"\n");
+            try appendRandomString(arena, rand, &result, 3, 20);
+            try appendPrint(arena, &result, "_{d} = \"", .{i});
+            try appendRandomString(arena, rand, &result, 3, 20);
+            try result.appendSlice(arena, "\"\n");
         },
         1 => {
-            try appendRandomString(gpa, rand, &result, 3, 20);
-            try appendPrint(gpa, &result, "_{d} = ", .{i});
+            try appendRandomString(arena, rand, &result, 3, 20);
+            try appendPrint(arena, &result, "_{d} = ", .{i});
             if (rand.uintAtMost(u32, 100_000) % 2 == 0) {
-                try result.appendSlice(gpa, "true\n");
+                try result.appendSlice(arena, "true\n");
             } else {
-                try result.appendSlice(gpa, "false\n");
+                try result.appendSlice(arena, "false\n");
             }
         },
         2 => {
-            try appendRandomString(gpa, rand, &result, 3, 20);
+            try appendRandomString(arena, rand, &result, 3, 20);
             switch (rand.int(u3)) {
-                0 => try appendPrint(gpa, &result, "_{d} = 0b{b}\n", .{ i, rand.int(u32) }),
-                1 => try appendPrint(gpa, &result, "_{d} = 0o{o}\n", .{ i, rand.int(u32) }),
-                2 => try appendPrint(gpa, &result, "_{d} = 0x{x}\n", .{ i, rand.int(u32) }),
-                else => try appendPrint(gpa, &result, "_{d} = {d}\n", .{ i, rand.int(i64) }),
+                0 => try appendPrint(arena, &result, "_{d} = 0b{b}\n", .{ i, rand.int(u32) }),
+                1 => try appendPrint(arena, &result, "_{d} = 0o{o}\n", .{ i, rand.int(u32) }),
+                2 => try appendPrint(arena, &result, "_{d} = 0x{x}\n", .{ i, rand.int(u32) }),
+                else => try appendPrint(arena, &result, "_{d} = {d}\n", .{ i, rand.int(i64) }),
             }
         },
         3 => {
-            try appendRandomString(gpa, rand, &result, 3, 20);
+            try appendRandomString(arena, rand, &result, 3, 20);
             switch (rand.int(u1)) {
-                0 => try appendPrint(gpa, &result, "_{d} = {e}\n", .{
+                0 => try appendPrint(arena, &result, "_{d} = {e}\n", .{
                     i,
                     rand.float(f64) + @as(f64, @floatFromInt(rand.int(u32))),
                 }),
-                1 => try appendPrint(gpa, &result, "_{d} = {d}\n", .{
+                1 => try appendPrint(arena, &result, "_{d} = {d}\n", .{
                     i,
                     rand.float(f64) + @as(f64, @floatFromInt(rand.int(u32))),
                 }),
             }
         },
         4 => {
-            try appendRandomString(gpa, rand, &result, 3, 20);
-            try appendPrint(gpa, &result, "_{d} = {d}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}\n", .{
+            try appendRandomString(arena, rand, &result, 3, 20);
+            try appendPrint(arena, &result, "_{d} = {d}-{d:0>2}-{d:0>2}T{d:0>2}:{d:0>2}:{d:0>2}\n", .{
                 i,
                 rand.intRangeAtMost(u32, 1000, 9999),
                 rand.intRangeAtMost(u8, 1, 12),
@@ -208,37 +212,39 @@ fn generateKeyValueRandom(gpa: Allocator, rand: std.Random, i: usize) ![]const u
         else => unreachable,
     }
 
-    return result.toOwnedSlice(gpa);
+    return result.toOwnedSlice(arena);
 }
 
-fn generateKeyValueDeterministic(gpa: Allocator, i: usize) ![]const u8 {
+fn generateKeyValueDeterministic(arena: Allocator, i: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
-    errdefer result.deinit(gpa);
 
     switch (i % 5) {
-        0 => try appendPrint(gpa, &result, "string_{d} = \"string_val_{d}\"\n", .{ i, i }),
-        1 => try appendPrint(gpa, &result, "bool_{d} = {s}\n", .{ i, if (i % 2 == 0) "true" else "false" }),
-        2 => try appendPrint(gpa, &result, "int_{d} = {d}\n", .{ i, i * 44 }),
-        3 => try appendPrint(gpa, &result, "float_{d} = {d}\n", .{ i, @as(f64, @floatFromInt(i * 27)) }),
-        4 => try appendPrint(gpa, &result, "dt_{d} = 2024-01-{d:0>2}T12:00:00Z\n", .{ i, (i % 28) + 1 }),
+        0 => try appendPrint(arena, &result, "string_{d} = \"string_val_{d}\"\n", .{ i, i }),
+        1 => try appendPrint(arena, &result, "bool_{d} = {s}\n", .{ i, if (i % 2 == 0) "true" else "false" }),
+        2 => try appendPrint(arena, &result, "int_{d} = {d}\n", .{ i, i * 44 }),
+        3 => try appendPrint(arena, &result, "float_{d} = {d}\n", .{ i, @as(f64, @floatFromInt(i * 27)) }),
+        4 => try appendPrint(arena, &result, "dt_{d} = 2024-01-{d:0>2}T12:00:00Z\n", .{ i, (i % 28) + 1 }),
         else => unreachable,
     }
 
-    return result.toOwnedSlice(gpa);
+    return result.toOwnedSlice(arena);
 }
 
-fn appendPrint(gpa: Allocator, list: *ArrayList(u8), comptime fmt: []const u8, args: anytype) !void {
-    const line = try std.fmt.allocPrint(gpa, fmt, args);
-    defer gpa.free(line);
-    try list.appendSlice(gpa, line);
+fn appendPrint(arena: Allocator, list: *ArrayList(u8), comptime fmt: []const u8, args: anytype) !void {
+    const line = try std.fmt.allocPrint(arena, fmt, args);
+    try list.appendSlice(arena, line);
 }
 
-fn appendRandomString(gpa: Allocator, rand: std.Random, list: *ArrayList(u8), at_least: usize, at_most: usize) !void {
+fn appendRandomString(arena: Allocator, rand: std.Random, list: *ArrayList(u8), at_least: usize, at_most: usize) !void {
+    const s = try randomStringRange(arena, rand, at_least, at_most);
+    try list.appendSlice(arena, s);
+}
+
+fn randomStringRange(arena: Allocator, rand: std.Random, at_least: usize, at_most: usize) ![]const u8 {
     const len = rand.intRangeAtMost(usize, at_least, at_most);
-    const buf: []u8 = try gpa.alloc(u8, len);
-    defer gpa.free(buf);
+    const buf: []u8 = try arena.alloc(u8, len);
     randomString(rand, buf);
-    try list.appendSlice(gpa, buf);
+    return buf;
 }
 
 fn randomString(rand: std.Random, out: []u8) void {
