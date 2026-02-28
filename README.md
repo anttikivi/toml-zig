@@ -129,5 +129,5 @@ version of Zig for you. To use this script, just run [`./zig`](zig) or
 
 Copyright (c) 2026 anttikivi
 
-The library is licensed under the MIT License. See [LICENSE](LICENSE) for more
-information.
+The library is licensed under the Apache License, Version 2.0. See
+[LICENSE](LICENSE) for more information.

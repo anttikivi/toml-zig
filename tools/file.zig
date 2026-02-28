@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Antti Kivi <antti@anttikivi.com>
+// SPDX-License-Identifier: Apache-2.0
+
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const Sha256 = std.crypto.hash.sha2.Sha256;

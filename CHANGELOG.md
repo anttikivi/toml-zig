@@ -8,6 +8,10 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Changed
+
+- Change the license of the library to Apache-2.0.
+
 ## [0.1.0] - 2026-02-27
 
 - Initial release of the `toml-zig` parser library.

@@ -1,3 +1,6 @@
+// SPDX-FileCopyrightText: 2026 Antti Kivi <antti@anttikivi.com>
+// SPDX-License-Identifier: Apache-2.0
+
 const builtin = @import("builtin");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
