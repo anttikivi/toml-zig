@@ -11,7 +11,7 @@ pub const Table = @import("value.zig").Table;
 pub const Time = @import("value.zig").Time;
 pub const Value = @import("value.zig").Value;
 
-/// Version represents the TOML versions that this parser supports.
+/// TOML versions that this parser supports.
 pub const Version = enum {
     @"1.1.0",
     @"1.0.0",

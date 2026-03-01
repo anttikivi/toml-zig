@@ -521,7 +521,7 @@ fn generateMixedRealisticRandom(arena: Allocator, rand: std.Random, target_size:
                     if (d != 0) try result.append(arena, '.');
                     try appendRandomString(arena, rand, &result, 3, 7);
                 }
-                try result.appendSlice(arena, "]\n");
+                try appendPrint(arena, &result, ".n_{d}]\n", .{i});
                 const kvs = rand.intRangeAtMost(usize, 2, 5);
                 for (0..kvs) |j| {
                     const s = try generateKeyValueRandom(arena, rand, j);
@@ -530,7 +530,6 @@ fn generateMixedRealisticRandom(arena: Allocator, rand: std.Random, target_size:
                 try result.append(arena, '\n');
             },
             5 => {
-                // Array with mixed types.
                 try appendRandomString(arena, rand, &result, 3, 8);
                 try appendPrint(arena, &result, "_{d} = [", .{i});
                 const elems = rand.intRangeAtMost(usize, 3, 6);
@@ -571,6 +570,7 @@ fn generateNestedTablesDeterministic(arena: Allocator, target_size: usize) ![]co
         for (0..depth) |d| {
             try appendPrint(arena, &path, ".level_{d}", .{d});
         }
+        try appendPrint(arena, &path, ".n_{d}", .{i});
         try appendPrint(arena, &result, "[{s}]\n", .{path.items});
 
         const kvs = (i % 5) + 2;
@@ -605,6 +605,7 @@ fn generateNestedTablesRandom(arena: Allocator, rand: std.Random, target_size: u
             try path.append(arena, '.');
             try appendRandomString(arena, rand, &path, 3, 8);
         }
+        try appendPrint(arena, &path, ".n_{d}", .{i});
         try appendPrint(arena, &result, "[{s}]\n", .{path.items});
 
         const kvs = rand.intRangeAtMost(usize, 2, 7);

@@ -8,6 +8,14 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Added
+
+- Add a benchmarking suite for measuring the parser's performance in different
+  scenarios: `array_tables`, `flat_kv`, `inline_heavy`, `mixed_realistic`,
+  `nested_tables`, and `string_escapes`.
+- Add five different benchmark sizes: `tiny`, `small`, `medium`, `large`, and
+  `xlarge`.
+
 ### Changed
 
 - Change the license of the library to Apache-2.0.
