@@ -60,12 +60,13 @@ pub const Diagnostics = struct {
         cursor: usize,
         line: usize,
     ) Allocator.Error!void {
-        const start = std.mem.lastIndexOfScalar(u8, input[0..cursor], '\n') orelse 0;
+        const prev_newline = std.mem.lastIndexOfScalar(u8, input[0..cursor], '\n');
+        const start = if (prev_newline) |i| i + 1 else 0;
         const end = std.mem.indexOfScalarPos(u8, input, cursor, '\n') orelse input.len;
-        const col = (cursor - start) + 1;
+
         self.line = line;
-        self.column = col;
-        self.snippet = try gpa.dupe(u8, input[(if (start > 0) start + 1 else start)..end]);
+        self.column = (cursor - start) + 1;
+        self.snippet = try gpa.dupe(u8, input[start..end]);
         self.message = try gpa.dupe(u8, msg);
     }
 
