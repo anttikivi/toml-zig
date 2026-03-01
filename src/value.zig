@@ -292,7 +292,7 @@ pub const Table = struct {
                 var bucket = hash & self.mask;
                 var i: u32 = 0;
 
-                while (i < self.mask) : (i += 1) {
+                while (i < self.buckets.len) : (i += 1) {
                     const j = self.buckets[bucket];
                     if (j == empty_bucket) {
                         return null;
