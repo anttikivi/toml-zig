@@ -1,0 +1,64 @@
+name: bench
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bench:
+    runs-on: ubuntu-22.04
+    env:
+      BENCHMARKS: small,medium
+      COMPARE_REFS: v0.1.0
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Generate benchmark data
+        run: ./zig build generate-bench-data -Dbenchmarks=${{ env.BENCHMARKS }}
+
+      - name: Benchmark HEAD
+        run: |
+          echo "::group::Benchmark HEAD ($(git rev-parse --short HEAD))"
+          ./zig build bench -Dbenchmarks=${{ env.BENCHMARKS }} -Doptimize=ReleaseFast
+          echo "::endgroup::"
+
+      - name: Benchmark comparison revisions
+        run: |
+          set -eu
+
+          # Save the current src/ so we can restore it after each comparison.
+          cp -r src/ /tmp/toml-zig-src-head
+
+          for ref in $COMPARE_REFS; do
+            echo "::group::Benchmark $ref"
+
+            # Resolve the ref to make sure it exists.
+            if ! git rev-parse --verify "$ref" >/dev/null 2>&1; then
+              echo "::warning::ref '$ref' not found, skipping"
+              echo "::endgroup::"
+              continue
+            fi
+
+            # Clear the Zig build cache so stale artifacts from the previous
+            # build are not reused after we swap out src/.
+            rm -rf .zig-cache
+
+            # Overlay the library source from the comparison revision.
+            git checkout "$ref" -- src/
+
+            echo "Running benchmarks with src/ from $ref ($(git rev-parse --short "$ref"))"
+            ./zig build bench -Dbenchmarks=${{ env.BENCHMARKS }} -Doptimize=ReleaseFast
+
+            # Restore HEAD's src/.
+            rm -rf src/
+            cp -r /tmp/toml-zig-src-head src/
+
+            echo "::endgroup::"
+          done
