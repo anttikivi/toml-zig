@@ -23,7 +23,7 @@ jobs:
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v6.0.2
       - run: apt update
-      - run: apt install reuse
+      - run: apt install -y reuse
       - run: reuse lint
   test:
     runs-on: codeberg-tiny
