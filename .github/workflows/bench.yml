@@ -23,7 +23,7 @@ jobs:
           - windows-latest
       fail-fast: false
     env:
-      BENCHMARKS: small,medium
+      BENCHMARKS: tiny,small,medium
       COMPARE_REFS: v0.1.0
     steps:
       - uses: anttikivi/forgejo-status@v0.1.2
