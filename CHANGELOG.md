@@ -17,6 +17,7 @@ and this project adheres to
   `xlarge`.
 - Add benchmarking utility that compares the benchmark result of the current
   HEAD against select revisions.
+- Make the project [REUSE-compliant](https://reuse.software/).
 
 ### Changed
 
