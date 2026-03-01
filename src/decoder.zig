@@ -80,9 +80,7 @@ pub const Diagnostics = struct {
     }
 };
 
-const Utf8Error = Allocator.Error || error{ InvalidUtf8, Reported };
-
-const Parsed = struct {
+pub const Parsed = struct {
     arena_allocator: std.heap.ArenaAllocator,
     root: Table,
 
@@ -95,6 +93,8 @@ const Parsed = struct {
         self.* = undefined;
     }
 };
+
+const Utf8Error = Allocator.Error || error{ InvalidUtf8, Reported };
 
 pub fn decode(gpa: Allocator, input: []const u8, options: DecodeOptions) !Parsed {
     var arena_allocator: std.heap.ArenaAllocator = .init(gpa);

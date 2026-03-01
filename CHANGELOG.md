@@ -23,6 +23,11 @@ and this project adheres to
 
 - Change the license of the library to Apache-2.0.
 
+### Fixed
+
+- Make `DecodeOptions`, `Diagnostics`, and `Parsed` public from the library
+  root.
+
 ## [0.1.0] - 2026-02-27
 
 - Initial release of the `toml-zig` parser library.
