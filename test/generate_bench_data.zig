@@ -49,6 +49,7 @@ pub fn main() !void {
         const data = if (bench_options.random_bench) switch (pattern) {
             .array_tables => try generateArrayTablesRandom(arena, rand, size.targetSize()),
             .flat_kv => try generateFlatKvRandom(arena, rand, size.targetSize()),
+            .inline_heavy => try generateInlineHeavyRandom(arena, rand, size.targetSize()),
             else => blk: {
                 std.debug.print("not yet implemented\n", .{});
                 break :blk "";
@@ -56,13 +57,12 @@ pub fn main() !void {
         } else switch (pattern) {
             .array_tables => try generateArrayTablesDeterministic(arena, size.targetSize()),
             .flat_kv => try generateFlatKvDeterministic(arena, size.targetSize()),
+            .inline_heavy => try generateInlineHeavyDeterministic(arena, size.targetSize()),
             else => blk: {
                 std.debug.print("not yet implemented\n", .{});
                 break :blk "";
             },
         };
-
-        // defer gpa.free(data);
 
         const filename = try if (bench_options.random_bench) std.fmt.allocPrint(
             gpa,
@@ -151,6 +151,298 @@ fn generateFlatKvRandom(arena: Allocator, rand: std.Random, target_size: usize) 
     while (result.items.len < target_size) : (i += 1) {
         const s = try generateKeyValueRandom(arena, rand, i);
         try result.appendSlice(arena, s);
+    }
+
+    return result.toOwnedSlice(arena);
+}
+
+fn generateInlineHeavyDeterministic(arena: Allocator, target_size: usize) ![]const u8 {
+    var result: ArrayList(u8) = .empty;
+
+    var i: usize = 0;
+    while (result.items.len < target_size) : (i += 1) {
+        try appendPrint(
+            arena,
+            &result,
+            "array_{d} = {s}\n",
+            .{
+                i,
+                try generateInlineArrayDeterministic(arena, i, 0),
+            },
+        );
+        try appendPrint(
+            arena,
+            &result,
+            "table_{d} = {s}\n",
+            .{
+                i,
+                try generateInlineTableDeterministic(arena, i, 0),
+            },
+        );
+    }
+
+    return result.toOwnedSlice(arena);
+}
+
+fn generateInlineHeavyRandom(arena: Allocator, rand: std.Random, target_size: usize) ![]const u8 {
+    var result: ArrayList(u8) = .empty;
+
+    var i: usize = 0;
+    while (result.items.len < target_size) : (i += 1) {
+        try appendPrint(
+            arena,
+            &result,
+            "{s}_{d} = {s}\n",
+            .{
+                try randomStringRange(arena, rand, 3, 9),
+                i,
+                try generateInlineArrayRandom(arena, rand, i, 0),
+            },
+        );
+        try appendPrint(
+            arena,
+            &result,
+            "{s}_{d} = {s}\n",
+            .{
+                try randomStringRange(arena, rand, 3, 9),
+                i,
+                try generateInlineTableRandom(arena, rand, i, 0),
+            },
+        );
+    }
+
+    return result.toOwnedSlice(arena);
+}
+
+fn generateInlineArrayDeterministic(arena: Allocator, pos: usize, nesting: usize) ![]const u8 {
+    var result: ArrayList(u8) = .empty;
+
+    const nested = if (nesting <= bench_options.max_nesting) blk: {
+        break :blk try generateInlineArrayDeterministic(arena, pos + 1, nesting + 1);
+    } else "\"last\"";
+
+    switch (pos % 4) {
+        0 => try appendPrint(
+            arena,
+            &result,
+            "[{s}, {d}, \"str\", {d}]",
+            .{
+                nested,
+                pos * 3,
+                @as(f64, @floatFromInt(pos * 2)) + 0.12,
+            },
+        ),
+        1 => try appendPrint(
+            arena,
+            &result,
+            "[{d}, {s}, \"str\", {d}]",
+            .{
+                pos * 3,
+                nested,
+                @as(f64, @floatFromInt(pos * 2)) + 0.12,
+            },
+        ),
+        2 => try appendPrint(
+            arena,
+            &result,
+            "[{d}, \"str\", {s}, {d}]",
+            .{
+                pos * 3,
+                nested,
+                @as(f64, @floatFromInt(pos * 2)) + 0.12,
+            },
+        ),
+        3 => try appendPrint(
+            arena,
+            &result,
+            "[{d}, \"str\", {d}, {s}]",
+            .{
+                pos * 3,
+                @as(f64, @floatFromInt(pos * 2)) + 0.12,
+                nested,
+            },
+        ),
+        else => unreachable,
+    }
+
+    return result.toOwnedSlice(arena);
+}
+
+fn generateInlineTableDeterministic(arena: Allocator, pos: usize, nesting: usize) ![]const u8 {
+    var result: ArrayList(u8) = .empty;
+
+    const nested = if (nesting <= bench_options.max_nesting) blk: {
+        break :blk try generateInlineTableDeterministic(arena, pos + 1, nesting + 1);
+    } else blk: {
+        const keyval = try generateKeyValueDeterministic(arena, nesting);
+        const trimmed = std.mem.trim(u8, keyval, " \t\n");
+        const i = std.mem.indexOfScalar(u8, trimmed, '=').?;
+        break :blk trimmed[i + 2 ..];
+    };
+
+    switch (pos % 4) {
+        0 => try appendPrint(
+            arena,
+            &result,
+            "{{ table = {s}, number = {d}, foo = \"bar\", product = {d} }}",
+            .{
+                nested,
+                pos * 3,
+                @as(f64, @floatFromInt(pos * 2)) + 0.12,
+            },
+        ),
+        1 => try appendPrint(
+            arena,
+            &result,
+            "{{ number = {d}, table = {s}, foo = \"bar\", product = {d} }}",
+            .{
+                pos * 3,
+                nested,
+                @as(f64, @floatFromInt(pos * 2)) + 0.12,
+            },
+        ),
+        2 => try appendPrint(
+            arena,
+            &result,
+            "{{ number = {d}, foo = \"bar\", table = {s}, product = {d} }}",
+            .{
+                pos * 3,
+                nested,
+                @as(f64, @floatFromInt(pos * 2)) + 0.12,
+            },
+        ),
+        3 => try appendPrint(
+            arena,
+            &result,
+            "{{ number = {d}, foo = \"bar\", product = {d}, table = {s} }}",
+            .{
+                pos * 3,
+                @as(f64, @floatFromInt(pos * 2)) + 0.12,
+                nested,
+            },
+        ),
+        else => unreachable,
+    }
+
+    return result.toOwnedSlice(arena);
+}
+
+fn generateInlineArrayRandom(arena: Allocator, rand: std.Random, pos: usize, nesting: usize) ![]const u8 {
+    var result: ArrayList(u8) = .empty;
+
+    const nested = if (nesting <= bench_options.max_nesting) blk: {
+        break :blk try generateInlineArrayRandom(arena, rand, pos + 1, nesting + 1);
+    } else try std.mem.concat(arena, u8, &.{ "\"", try randomStringRange(arena, rand, 5, 12), "\"" });
+
+    switch (pos % 4) {
+        0 => try appendPrint(
+            arena,
+            &result,
+            "[{s}, {d}, \"{s}\", {d}]",
+            .{
+                nested,
+                rand.int(u32),
+                try randomStringRange(arena, rand, 2, 20),
+                @as(f64, @floatFromInt(rand.int(u8))) + rand.float(f64),
+            },
+        ),
+        1 => try appendPrint(
+            arena,
+            &result,
+            "[{d}, {s}, \"{s}\", {d}]",
+            .{
+                rand.int(u32),
+                nested,
+                try randomStringRange(arena, rand, 2, 20),
+                @as(f64, @floatFromInt(rand.int(u8))) + rand.float(f64),
+            },
+        ),
+        2 => try appendPrint(
+            arena,
+            &result,
+            "[{d}, \"{s}\", {s}, {d}]",
+            .{
+                rand.int(u32),
+                try randomStringRange(arena, rand, 2, 20),
+                nested,
+                @as(f64, @floatFromInt(rand.int(u8))) + rand.float(f64),
+            },
+        ),
+        3 => try appendPrint(
+            arena,
+            &result,
+            "[{d}, \"{s}\", {d}, {s}]",
+            .{
+                rand.int(u32),
+                try randomStringRange(arena, rand, 2, 20),
+                @as(f64, @floatFromInt(rand.int(u8))) + rand.float(f64),
+                nested,
+            },
+        ),
+        else => unreachable,
+    }
+
+    return result.toOwnedSlice(arena);
+}
+
+fn generateInlineTableRandom(arena: Allocator, rand: std.Random, pos: usize, nesting: usize) ![]const u8 {
+    var result: ArrayList(u8) = .empty;
+
+    const nested = if (nesting <= bench_options.max_nesting) blk: {
+        break :blk try generateInlineTableRandom(arena, rand, pos + 1, nesting + 1);
+    } else blk: {
+        const keyval = try generateKeyValueRandom(arena, rand, nesting);
+        const trimmed = std.mem.trim(u8, keyval, " \t\n");
+        const i = std.mem.indexOfScalar(u8, trimmed, '=').?;
+        break :blk trimmed[i + 2 ..];
+    };
+
+    switch (pos % 4) {
+        0 => try appendPrint(
+            arena,
+            &result,
+            "{{ table = {s}, number = {d}, foo = \"{s}\", product = {d} }}",
+            .{
+                nested,
+                rand.int(u32),
+                try randomStringRange(arena, rand, 3, 14),
+                @as(f64, @floatFromInt(rand.int(u8))) + rand.float(f64),
+            },
+        ),
+        1 => try appendPrint(
+            arena,
+            &result,
+            "{{ number = {d}, table = {s}, foo = \"{s}\", product = {d} }}",
+            .{
+                rand.int(u32),
+                nested,
+                try randomStringRange(arena, rand, 3, 14),
+                @as(f64, @floatFromInt(rand.int(u8))) + rand.float(f64),
+            },
+        ),
+        2 => try appendPrint(
+            arena,
+            &result,
+            "{{ number = {d}, foo = \"{s}\", table = {s}, product = {d} }}",
+            .{
+                rand.int(u32),
+                try randomStringRange(arena, rand, 3, 14),
+                nested,
+                @as(f64, @floatFromInt(rand.int(u8))) + rand.float(f64),
+            },
+        ),
+        3 => try appendPrint(
+            arena,
+            &result,
+            "{{ number = {d}, foo = \"{s}\", product = {d}, table = {s} }}",
+            .{
+                rand.int(u32),
+                try randomStringRange(arena, rand, 3, 14),
+                @as(f64, @floatFromInt(rand.int(u8))) + rand.float(f64),
+                nested,
+            },
+        ),
+        else => unreachable,
     }
 
     return result.toOwnedSlice(arena);

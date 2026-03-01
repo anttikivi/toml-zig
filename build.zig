@@ -32,6 +32,11 @@ pub fn build(b: *std.Build) void {
         }
         break :blk result.toOwnedSlice(b.allocator) catch @panic("OOM");
     };
+    const bench_max_nesting = b.option(
+        u8,
+        "max-bench-nesting",
+        "Maximum number of nested tables and array to have in the heavily-nested benchmark data. Default is 5",
+    ) orelse 5;
     const bench_seed = b.option(
         u64,
         "bench-seed",
@@ -236,6 +241,7 @@ pub fn build(b: *std.Build) void {
     const bench_options = b.addOptions();
     bench_options.addOption([]const u8, "data_path", bench_data_path);
     bench_options.addOption(u64, "bench_seed", bench_seed);
+    bench_options.addOption(u8, "max_nesting", bench_max_nesting);
     bench_options.addOption(bool, "random_bench", random_bench);
     {
         const count = std.mem.count(u8, benchmarks_list, ",");
