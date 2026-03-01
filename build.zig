@@ -87,6 +87,59 @@ pub fn build(b: *std.Build) void {
         test_step.dependOn(step);
     }
 
+    // Benchmarks
+    const bench_data_path = b.pathJoin(&.{ "test", ".bench" });
+    const bench_options = b.addOptions();
+    bench_options.addOption([]const u8, "data_path", bench_data_path);
+    bench_options.addOption(u64, "bench_seed", bench_seed);
+    bench_options.addOption(u8, "max_nesting", bench_max_nesting);
+    bench_options.addOption(bool, "random_bench", random_bench);
+    {
+        const count = std.mem.count(u8, benchmarks_list, ",");
+        const benchmarks = b.allocator.alloc([]const u8, count + 1) catch @panic("OOM");
+
+        var it = std.mem.splitScalar(u8, benchmarks_list, ',');
+        var i: usize = 0;
+        while (it.next()) |fixture| : (i += 1) {
+            benchmarks[i] = fixture;
+        }
+
+        bench_options.addOption([]const []const u8, "benchmarks", benchmarks);
+    }
+    {
+        const step = b.step("generate-bench-data", "Generate data for running the benchmarks");
+        const generate_bench_data = b.addExecutable(.{
+            .name = "generate-bench-data",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("test/generate_bench_data.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+
+        generate_bench_data.root_module.addOptions("bench_options", bench_options);
+
+        const run = b.addRunArtifact(generate_bench_data);
+        step.dependOn(&run.step);
+    }
+    {
+        const step = b.step("bench", "Run the bechmarks for the current revision");
+        const bench = b.addExecutable(.{
+            .name = "benchmark",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("test/benchmark.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+
+        bench.root_module.addOptions("bench_options", bench_options);
+        bench.root_module.addImport("toml", toml_mod);
+
+        const run = b.addRunArtifact(bench);
+        step.dependOn(&run.step);
+    }
+
     // fetch-toml-test
     const toml_test_path = b.pathJoin(&.{ "vendor", "toml-test" });
     {
@@ -235,58 +288,6 @@ pub fn build(b: *std.Build) void {
             version_step.dependOn(&run.step);
             step.dependOn(version_step);
         }
-    }
-
-    const bench_data_path = b.pathJoin(&.{ "test", ".bench" });
-    const bench_options = b.addOptions();
-    bench_options.addOption([]const u8, "data_path", bench_data_path);
-    bench_options.addOption(u64, "bench_seed", bench_seed);
-    bench_options.addOption(u8, "max_nesting", bench_max_nesting);
-    bench_options.addOption(bool, "random_bench", random_bench);
-    {
-        const count = std.mem.count(u8, benchmarks_list, ",");
-        const benchmarks = b.allocator.alloc([]const u8, count + 1) catch @panic("OOM");
-
-        var it = std.mem.splitScalar(u8, benchmarks_list, ',');
-        var i: usize = 0;
-        while (it.next()) |fixture| : (i += 1) {
-            benchmarks[i] = fixture;
-        }
-
-        bench_options.addOption([]const []const u8, "benchmarks", benchmarks);
-    }
-    {
-        const step = b.step("generate-bench-data", "Generate data for running the benchmarks");
-        const generate_bench_data = b.addExecutable(.{
-            .name = "generate-bench-data",
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("test/generate_bench_data.zig"),
-                .target = target,
-                .optimize = optimize,
-            }),
-        });
-
-        generate_bench_data.root_module.addOptions("bench_options", bench_options);
-
-        const run = b.addRunArtifact(generate_bench_data);
-        step.dependOn(&run.step);
-    }
-    {
-        const step = b.step("bench", "Run the bechmarks for the current revision");
-        const bench = b.addExecutable(.{
-            .name = "benchmark",
-            .root_module = b.createModule(.{
-                .root_source_file = b.path("test/benchmark.zig"),
-                .target = target,
-                .optimize = optimize,
-            }),
-        });
-
-        bench.root_module.addOptions("bench_options", bench_options);
-        bench.root_module.addImport("toml", toml_mod);
-
-        const run = b.addRunArtifact(bench);
-        step.dependOn(&run.step);
     }
 
     // Formatting tasks
