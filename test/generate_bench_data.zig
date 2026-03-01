@@ -13,31 +13,78 @@ const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_-";
 const nums = "0123456789";
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+var stdout_buffer: [8192]u8 = undefined;
+var stderr_buffer: [8192]u8 = undefined;
 
 pub fn main() !void {
     const gpa = debug_allocator.allocator();
     defer _ = debug_allocator.deinit();
+
+    var stdout_stream = std.fs.File.stdout().writerStreaming(&stdout_buffer);
+    const stdout = &stdout_stream.interface;
+
+    var stderr_stream = std.fs.File.stderr().writerStreaming(&stderr_buffer);
+    const stderr = &stderr_stream.interface;
 
     const cwd = std.fs.cwd();
 
     var dir = try cwd.makeOpenPath(bench_options.data_path, .{});
     defer dir.close();
 
-    inline for (bench_options.benchmarks) |fixture| {
-        std.debug.print("generating {s}\n", .{fixture});
+    var fixtures: ArrayList([]const u8) = .empty;
+    defer {
+        for (fixtures.items) |item| {
+            gpa.free(item);
+        }
+        fixtures.deinit(gpa);
+    }
+
+    for (bench_options.benchmarks) |fixture| {
+        if (std.meta.stringToEnum(Size, fixture)) |_| {
+            for (std.meta.fieldNames(Pattern)) |pattern| {
+                const full_fixture = try std.mem.concat(gpa, u8, &.{ fixture, "-", pattern });
+
+                for (fixtures.items) |f| {
+                    if (std.mem.eql(u8, f, full_fixture)) {
+                        try stderr.print("duplicate fixture {s}\n", .{full_fixture});
+                        try stderr.flush();
+                        return error.DuplicateFixture;
+                    }
+                }
+
+                try fixtures.append(gpa, full_fixture);
+            }
+        } else {
+            const full_fixture = try gpa.dupe(u8, fixture);
+
+            for (fixtures.items) |f| {
+                if (std.mem.eql(u8, f, full_fixture)) {
+                    try stderr.print("duplicate fixture {s}\n", .{full_fixture});
+                    try stderr.flush();
+                    return error.DuplicateFixture;
+                }
+            }
+
+            try fixtures.append(gpa, full_fixture);
+        }
+    }
+
+    for (fixtures.items) |fixture| {
+        try stdout.print("generating {s}\n", .{fixture});
+        try stdout.flush();
 
         const i = std.mem.indexOfScalar(
             u8,
             fixture,
             '-',
-        ) orelse @panic("invalid benchmark generation target: " ++ fixture);
+        ) orelse std.debug.panic("invalid benchmark generation target: {s}", .{fixture});
         const size_name = fixture[0..i];
         const pattern_name = fixture[i + 1 ..];
-        const size = std.meta.stringToEnum(Size, size_name) orelse @panic("invalid benchmark size in " ++ fixture);
+        const size = std.meta.stringToEnum(Size, size_name) orelse std.debug.panic("invalid benchmark size in {s}", .{fixture});
         const pattern = std.meta.stringToEnum(
             Pattern,
             pattern_name,
-        ) orelse @panic("invalid benchmark pattern in " ++ fixture);
+        ) orelse std.debug.panic("invalid benchmark pattern in {s}", .{fixture});
 
         var prng = std.Random.DefaultPrng.init(bench_options.bench_seed);
         const rand = prng.random();
@@ -80,6 +127,12 @@ pub fn main() !void {
         var writer = file.writer(&buf);
         try writer.interface.writeAll(data);
         try writer.interface.flush();
+
+        const full_path = try std.fs.path.join(gpa, &.{ bench_options.data_path, filename });
+        defer gpa.free(full_path);
+
+        try stdout.print("wrote {d} bytes to {s}\n", .{ data.len, full_path });
+        try stdout.flush();
     }
 }
 

@@ -8,7 +8,7 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const toml = @import("toml");
 
-// const Pattern = @import("bench_data.zig").Pattern;
+const Pattern = @import("bench_data.zig").Pattern;
 const Size = @import("bench_data.zig").Size;
 const TrackingAllocator = @import("TrackingAllocator.zig");
 
@@ -99,7 +99,45 @@ pub fn main() !void {
     var dir = try cwd.openDir(bench_options.data_path, .{});
     defer dir.close();
 
-    inline for (bench_options.benchmarks) |fixture| {
+    var fixtures: ArrayList([]const u8) = .empty;
+    defer {
+        for (fixtures.items) |item| {
+            gpa.free(item);
+        }
+        fixtures.deinit(gpa);
+    }
+
+    for (bench_options.benchmarks) |fixture| {
+        if (std.meta.stringToEnum(Size, fixture)) |_| {
+            for (std.meta.fieldNames(Pattern)) |pattern| {
+                const full_fixture = try std.mem.concat(gpa, u8, &.{ fixture, "-", pattern });
+
+                for (fixtures.items) |f| {
+                    if (std.mem.eql(u8, f, full_fixture)) {
+                        try stderr.print("duplicate fixture {s}\n", .{full_fixture});
+                        try stderr.flush();
+                        return error.DuplicateFixture;
+                    }
+                }
+
+                try fixtures.append(gpa, full_fixture);
+            }
+        } else {
+            const full_fixture = try gpa.dupe(u8, fixture);
+
+            for (fixtures.items) |f| {
+                if (std.mem.eql(u8, f, full_fixture)) {
+                    try stderr.print("duplicate fixture {s}\n", .{full_fixture});
+                    try stderr.flush();
+                    return error.DuplicateFixture;
+                }
+            }
+
+            try fixtures.append(gpa, full_fixture);
+        }
+    }
+
+    for (fixtures.items) |fixture| {
         try stdout.print("\n{s}", .{fixture});
         try stdout.flush();
 
@@ -107,9 +145,12 @@ pub fn main() !void {
             u8,
             fixture,
             '-',
-        ) orelse @panic("invalid benchmark generation target: " ++ fixture);
+        ) orelse std.debug.panic("invalid benchmark target: {s}", .{fixture});
         const size_name = fixture[0..i];
-        const size = std.meta.stringToEnum(Size, size_name) orelse @panic("invalid benchmark size in " ++ fixture);
+        const size = std.meta.stringToEnum(Size, size_name) orelse std.debug.panic(
+            "invalid benchmark size in {s}",
+            .{fixture},
+        );
 
         const filename = try if (bench_options.random_bench) std.fmt.allocPrint(
             gpa,
