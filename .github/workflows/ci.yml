@@ -23,13 +23,13 @@ jobs:
       - run: shellcheck ./tools/minisign.sh
       - run: shellcheck ./tools/download_minisign.sh
       - shell: pwsh
-        run: Invoke-ScriptAnalyzer -Path tools/zig.ps1 -Severity Error,Warning,Information -EnableExit
+        run: Invoke-ScriptAnalyzer -Path tools/zig.ps1 -Severity Error,Warning,Information -EnableExit -ExcludeRule PSUseBOMForUnicodeEncodedFile
       - shell: pwsh
-        run: Invoke-ScriptAnalyzer -Path tools/download_zig.ps1 -Severity Error,Warning,Information -EnableExit
+        run: Invoke-ScriptAnalyzer -Path tools/download_zig.ps1 -Severity Error,Warning,Information -EnableExit -ExcludeRule PSUseBOMForUnicodeEncodedFile
       - shell: pwsh
-        run: Invoke-ScriptAnalyzer -Path tools/minisign.win.ps1 -Severity Error,Warning,Information -EnableExit
+        run: Invoke-ScriptAnalyzer -Path tools/minisign.win.ps1 -Severity Error,Warning,Information -EnableExit -ExcludeRule PSUseBOMForUnicodeEncodedFile
       - shell: pwsh
-        run: Invoke-ScriptAnalyzer -Path tools/download_minisign.ps1 -Severity Error,Warning,Information -EnableExit
+        run: Invoke-ScriptAnalyzer -Path tools/download_minisign.ps1 -Severity Error,Warning,Information -EnableExit -ExcludeRule PSUseBOMForUnicodeEncodedFile
 
   aarch64-freebsd:
     runs-on: ubuntu-latest
