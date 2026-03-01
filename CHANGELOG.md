@@ -15,6 +15,8 @@ and this project adheres to
   `nested_tables`, and `string_escapes`.
 - Add five different benchmark sizes: `tiny`, `small`, `medium`, `large`, and
   `xlarge`.
+- Add benchmarking utility that compares the benchmark result of the current
+  HEAD against select revisions.
 
 ### Changed
 
