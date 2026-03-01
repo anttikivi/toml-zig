@@ -23,6 +23,7 @@ const Config = struct {
     max_iter: usize = 1_000,
     min_ns: u64 = 100_000_000,
     warmup_iterations: usize = 10,
+    memory_determination_iterations: usize = 10,
 };
 
 const Result = struct {
@@ -55,12 +56,7 @@ const Result = struct {
     }
 };
 
-const RunResult = struct {
-    time: u64,
-    alloc_result: AllocatorResult,
-};
-
-const AllocatorResult = struct {
+const MemoryResult = struct {
     alloc_count: u64,
     total_allocated: u64,
     total_freed: u64,
@@ -211,7 +207,7 @@ pub fn main() !void {
             },
         };
 
-        const result = run(gpa, benchDecode, data, config);
+        const result = run(gpa, benchDecodeTiming, benchDecodeTracking, data, config);
         try stdout.print("{f}\n", .{result});
         try stdout.flush();
     }
@@ -219,33 +215,26 @@ pub fn main() !void {
 
 fn run(
     gpa: Allocator,
-    comptime func: fn (*TrackingAllocator, []const u8) anyerror!RunResult,
+    comptime timing: fn (Allocator, []const u8) anyerror!u64,
+    comptime memory: fn (*TrackingAllocator, []const u8) anyerror!MemoryResult,
     data: []const u8,
     config: Config,
 ) Result {
     var times: ArrayList(u64) = .empty;
     defer times.deinit(gpa);
 
-    var alloc_results: ArrayList(AllocatorResult) = .empty;
-    defer alloc_results.deinit(gpa);
-
     for (0..config.warmup_iterations) |_| {
-        var tracking: TrackingAllocator = .init(gpa);
-        _ = func(&tracking, data) catch |err| std.debug.panic("warmup failed: {t}", .{err});
+        _ = timing(gpa, data) catch |err| std.debug.panic("warmup failed: {t}", .{err});
     }
 
     var ns: u64 = 0;
     var iter: usize = 0;
 
     while (iter < config.min_iter or (ns < config.min_ns and iter < config.max_iter)) : (iter += 1) {
-        var tracking: TrackingAllocator = .init(gpa);
+        const result = timing(gpa, data) catch |err| std.debug.panic("benchmark failed: {t}", .{err});
 
-        const result = func(&tracking, data) catch |err| std.debug.panic("benchmark failed: {t}", .{err});
-
-        times.append(gpa, result.time) catch @panic("OOM");
-        ns += result.time;
-
-        alloc_results.append(gpa, result.alloc_result) catch @panic("OOM");
+        times.append(gpa, result) catch @panic("OOM");
+        ns += result;
     }
 
     if (times.items.len == 0) {
@@ -254,18 +243,6 @@ fn run(
 
     const items = times.items;
     std.mem.sort(u64, items, {}, std.sort.asc(u64));
-
-    const allocs = alloc_results.items;
-    for (allocs[1..], 1..) |alloc, i| {
-        if (allocs[i - 1].total_allocated != alloc.total_allocated or
-            allocs[i - 1].total_freed != alloc.total_freed or
-            allocs[i - 1].live_bytes != alloc.live_bytes or
-            allocs[i - 1].peak_live_bytes != alloc.peak_live_bytes or
-            allocs[i - 1].alloc_count != alloc.alloc_count)
-        {
-            @panic("nondeterministic parsing");
-        }
-    }
 
     const min_ns = items[0];
     const max_ns = items[items.len - 1];
@@ -280,6 +257,33 @@ fn run(
     const total_bytes = data.len * iter;
     const throughput_mbs = @as(f64, @floatFromInt(total_bytes)) / @as(f64, @floatFromInt(ns)) * 1000.0;
 
+    var memory_results: ArrayList(MemoryResult) = .empty;
+    defer memory_results.deinit(gpa);
+
+    for (0..config.memory_determination_iterations) |_| {
+        var tracking: TrackingAllocator = .init(gpa);
+
+        const result = memory(&tracking, data) catch |err| std.debug.panic("benchmark failed: {t}", .{err});
+
+        memory_results.append(gpa, result) catch @panic("OOM");
+    }
+
+    const allocs = memory_results.items;
+    for (allocs[1..], 1..) |alloc, i| {
+        if (allocs[i - 1].total_allocated != alloc.total_allocated or
+            allocs[i - 1].total_freed != alloc.total_freed or
+            allocs[i - 1].live_bytes != alloc.live_bytes or
+            allocs[i - 1].peak_live_bytes != alloc.peak_live_bytes or
+            allocs[i - 1].alloc_count != alloc.alloc_count)
+        {
+            @panic("nondeterministic parsing");
+        }
+    }
+
+    var tracking: TrackingAllocator = .init(gpa);
+
+    const memory_result = memory(&tracking, data) catch |err| std.debug.panic("benchmark failed: {t}", .{err});
+
     return .{
         .iter = iter,
         .min_ns = min_ns,
@@ -288,11 +292,11 @@ fn run(
         .median_ns = median_ns,
         .total_bytes = total_bytes,
         .throughput_mbs = throughput_mbs,
-        .total_allocated = allocs[0].total_allocated,
-        .total_freed = allocs[0].total_freed,
-        .live_bytes = allocs[0].live_bytes,
-        .peak_live_bytes = allocs[0].peak_live_bytes,
-        .alloc_count = allocs[0].alloc_count,
+        .total_allocated = memory_result.total_allocated,
+        .total_freed = memory_result.total_freed,
+        .live_bytes = memory_result.live_bytes,
+        .peak_live_bytes = memory_result.peak_live_bytes,
+        .alloc_count = memory_result.alloc_count,
     };
 }
 
@@ -310,9 +314,7 @@ fn formatTime(ns: u64) [10]u8 {
     return buf;
 }
 
-fn benchDecode(tracker: *TrackingAllocator, data: []const u8) !RunResult {
-    const gpa = tracker.allocator();
-
+fn benchDecodeTiming(gpa: Allocator, data: []const u8) !u64 {
     const start = std.time.nanoTimestamp();
 
     var parsed = try toml.decode(gpa, data, .{});
@@ -320,14 +322,20 @@ fn benchDecode(tracker: *TrackingAllocator, data: []const u8) !RunResult {
 
     const end = std.time.nanoTimestamp();
 
+    return @intCast(end - start);
+}
+
+fn benchDecodeTracking(tracker: *TrackingAllocator, data: []const u8) !MemoryResult {
+    const gpa = tracker.allocator();
+
+    var parsed = try toml.decode(gpa, data, .{});
+    defer parsed.deinit();
+
     return .{
-        .time = @intCast(end - start),
-        .alloc_result = .{
-            .alloc_count = tracker.alloc_count,
-            .total_allocated = tracker.total_allocated,
-            .total_freed = tracker.total_freed,
-            .live_bytes = tracker.live_bytes,
-            .peak_live_bytes = tracker.peak_live_bytes,
-        },
+        .alloc_count = tracker.alloc_count,
+        .total_allocated = tracker.total_allocated,
+        .total_freed = tracker.total_freed,
+        .live_bytes = tracker.live_bytes,
+        .peak_live_bytes = tracker.peak_live_bytes,
     };
 }
