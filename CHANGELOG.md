@@ -29,6 +29,8 @@ and this project adheres to
   root.
 - Populate the `diagnostics` field in the parser correctly to export the
   diagnostics information from it as it was previously missing.
+- Fix possible out-of-bounds access to the input slice in the scanner when
+  parsing multiline literal strings.
 
 ## [0.1.0] - 2026-02-27
 

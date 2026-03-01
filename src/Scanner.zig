@@ -567,7 +567,7 @@ fn scanMultilineLiteralString(self: *Scanner) Error!Token {
 
         if (c == '\'') {
             var i: usize = 0;
-            while (self.cursor < self.input.len and self.input[self.cursor + i] == '\'') {
+            while (self.cursor + i < self.input.len and self.input[self.cursor + i] == '\'') {
                 i += 1;
             }
 
