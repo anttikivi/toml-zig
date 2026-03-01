@@ -72,7 +72,7 @@ pub fn main() !void {
 
         break :gpa switch (builtin.mode) {
             .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
+            .ReleaseFast, .ReleaseSmall => .{ std.heap.page_allocator, false },
         };
     };
     defer if (is_debug) {
