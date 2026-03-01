@@ -22,13 +22,15 @@ jobs:
   reuse:
     runs-on: codeberg-tiny
     steps:
-      - uses: https://code.forgejo.org/actions/checkout@v6.0.2
-      - run: apt update
-      - run: apt install -y reuse
-      - run: reuse lint
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: pipx run reuse lint
   test:
     runs-on: codeberg-tiny
     steps:
-      - uses: https://code.forgejo.org/actions/checkout@v6.0.2
-      - uses: https://codeberg.org/mlugg/setup-zig@v2.2.1
+      - uses: actions/checkout@v6.0.2
+      - uses: mlugg/setup-zig@v2.2.1
       - run: zig build test-unit --summary all
