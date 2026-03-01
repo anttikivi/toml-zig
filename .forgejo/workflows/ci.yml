@@ -31,5 +31,4 @@ jobs:
     runs-on: codeberg-tiny
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: mlugg/setup-zig@v2.2.1
-      - run: zig build test-unit --summary all
+      - run: ./zig build test-unit --summary all
