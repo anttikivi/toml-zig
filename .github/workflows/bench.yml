@@ -14,17 +14,23 @@ permissions:
 
 jobs:
   bench:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+          - windows-latest
     env:
       BENCHMARKS: small,medium
       COMPARE_REFS: v0.1.0
     steps:
+      - uses: anttikivi/forgejo-status@v0.1.2
+        with:
+          token: ${{ secrets.CODEBERG_TOKEN }}
+          context: ${{ github.workflow }} / ${{ matrix.os }}
       - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0
-
-      - name: Generate benchmark data
-        run: ./zig build generate-bench-data -Dbenchmarks="${{ env.BENCHMARKS }}"
-
-      - name: Run benchmark comparison
-        run: ./zig build bench-compare -Dbenchmarks="${{ env.BENCHMARKS }}" -Dcompare-refs="${{ env.COMPARE_REFS }}"
+      - run: ./zig.ps1 build generate-bench-data -Dbenchmarks="${{ env.BENCHMARKS }}"
+      - run: ./zig.ps1 build bench-compare -Dbenchmarks="${{ env.BENCHMARKS }}" -Dcompare-refs="${{ env.COMPARE_REFS }}"
