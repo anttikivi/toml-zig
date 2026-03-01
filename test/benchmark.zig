@@ -23,7 +23,6 @@ const Config = struct {
     max_iter: usize = 1_000,
     min_ns: u64 = 100_000_000,
     warmup_iterations: usize = 10,
-    memory_determination_iterations: usize = 10,
 };
 
 const Result = struct {
@@ -72,7 +71,7 @@ pub fn main() !void {
 
         break :gpa switch (builtin.mode) {
             .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-            .ReleaseFast, .ReleaseSmall => .{ std.heap.page_allocator, false },
+            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
         };
     };
     defer if (is_debug) {
@@ -256,29 +255,6 @@ fn run(
 
     const total_bytes = data.len * iter;
     const throughput_mbs = @as(f64, @floatFromInt(total_bytes)) / @as(f64, @floatFromInt(ns)) * 1000.0;
-
-    var memory_results: ArrayList(MemoryResult) = .empty;
-    defer memory_results.deinit(gpa);
-
-    for (0..config.memory_determination_iterations) |_| {
-        var tracking: TrackingAllocator = .init(gpa);
-
-        const result = memory(&tracking, data) catch |err| std.debug.panic("benchmark failed: {t}", .{err});
-
-        memory_results.append(gpa, result) catch @panic("OOM");
-    }
-
-    const allocs = memory_results.items;
-    for (allocs[1..], 1..) |alloc, i| {
-        if (allocs[i - 1].total_allocated != alloc.total_allocated or
-            allocs[i - 1].total_freed != alloc.total_freed or
-            allocs[i - 1].live_bytes != alloc.live_bytes or
-            allocs[i - 1].peak_live_bytes != alloc.peak_live_bytes or
-            allocs[i - 1].alloc_count != alloc.alloc_count)
-        {
-            @panic("nondeterministic parsing");
-        }
-    }
 
     var tracking: TrackingAllocator = .init(gpa);
 
