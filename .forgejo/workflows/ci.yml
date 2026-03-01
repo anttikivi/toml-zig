@@ -18,6 +18,12 @@ permissions:
   contents: read
 
 jobs:
+  reuse:
+    runs-on: codeberg-tiny
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v6.0.2
+      - run: apt install reuse
+      - run: reuse lint
   test:
     runs-on: codeberg-tiny
     steps:
