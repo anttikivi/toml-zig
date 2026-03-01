@@ -27,6 +27,8 @@ and this project adheres to
 
 - Make `DecodeOptions`, `Diagnostics`, and `Parsed` public from the library
   root.
+- Populate the `diagnostics` field in the parser correctly to export the
+  diagnostics information from it as it was previously missing.
 
 ## [0.1.0] - 2026-02-27
 
