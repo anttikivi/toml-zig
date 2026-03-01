@@ -32,6 +32,11 @@ pub fn build(b: *std.Build) void {
         }
         break :blk result.toOwnedSlice(b.allocator) catch @panic("OOM");
     };
+    const bench_json = b.option(
+        bool,
+        "bench-json",
+        "Output benchmark results as JSON instead of human-readable text",
+    ) orelse false;
     const bench_max_nesting = b.option(
         u8,
         "max-bench-nesting",
@@ -42,6 +47,11 @@ pub fn build(b: *std.Build) void {
         "bench-seed",
         "Seed to use for generating the benchmark input data when randomizing the generation is enabled",
     ) orelse 0xdead_beef;
+    const compare_refs_list = b.option(
+        []const u8,
+        "compare-refs",
+        "Comma-separated list of git refs to compare benchmarks against (for bench-compare step)",
+    ) orelse "v0.1.0";
     const min_index_capacity = b.option(
         u32,
         "min-index-capacity",
@@ -94,6 +104,7 @@ pub fn build(b: *std.Build) void {
     bench_options.addOption(u64, "bench_seed", bench_seed);
     bench_options.addOption(u8, "max_nesting", bench_max_nesting);
     bench_options.addOption(bool, "random_bench", random_bench);
+    bench_options.addOption(bool, "json_output", bench_json);
     {
         const count = std.mem.count(u8, benchmarks_list, ",");
         const benchmarks = b.allocator.alloc([]const u8, count + 1) catch @panic("OOM");
@@ -127,7 +138,7 @@ pub fn build(b: *std.Build) void {
         const bench = b.addExecutable(.{
             .name = "benchmark",
             .root_module = b.createModule(.{
-                .root_source_file = b.path("test/benchmark.zig"),
+                .root_source_file = b.path("test/bench_runner.zig"),
                 .target = target,
                 .optimize = optimize,
             }),
@@ -137,6 +148,56 @@ pub fn build(b: *std.Build) void {
         bench.root_module.addImport("toml", toml_mod);
 
         const run = b.addRunArtifact(bench);
+        step.dependOn(&run.step);
+    }
+    {
+        const step = b.step("bench-compare", "Run benchmarks and compare against other revisions");
+        const compare_options = b.addOptions();
+        compare_options.addOption([]const u8, "data_path", bench_data_path);
+        compare_options.addOption(u64, "bench_seed", bench_seed);
+        compare_options.addOption(u8, "max_nesting", bench_max_nesting);
+        compare_options.addOption(bool, "random_bench", random_bench);
+        compare_options.addOption(bool, "json_output", false);
+        compare_options.addOption([]const u8, "zig_path", b.pathJoin(&.{ "tools", ".zig", "zig" }));
+        compare_options.addOption([]const u8, "benchmarks_arg", benchmarks_list);
+
+        {
+            const count = std.mem.count(u8, compare_refs_list, ",");
+            const refs = b.allocator.alloc([]const u8, count + 1) catch @panic("OOM");
+
+            var it = std.mem.splitScalar(u8, compare_refs_list, ',');
+            var i: usize = 0;
+            while (it.next()) |ref| : (i += 1) {
+                refs[i] = ref;
+            }
+
+            compare_options.addOption([]const []const u8, "compare_refs", refs);
+        }
+        {
+            const count = std.mem.count(u8, benchmarks_list, ",");
+            const benchmarks = b.allocator.alloc([]const u8, count + 1) catch @panic("OOM");
+
+            var it = std.mem.splitScalar(u8, benchmarks_list, ',');
+            var i: usize = 0;
+            while (it.next()) |fixture| : (i += 1) {
+                benchmarks[i] = fixture;
+            }
+
+            compare_options.addOption([]const []const u8, "benchmarks", benchmarks);
+        }
+
+        const bench_compare = b.addExecutable(.{
+            .name = "bench-compare",
+            .root_module = b.createModule(.{
+                .root_source_file = b.path("test/bench_compare.zig"),
+                .target = target,
+                .optimize = optimize,
+            }),
+        });
+
+        bench_compare.root_module.addOptions("bench_options", compare_options);
+
+        const run = b.addRunArtifact(bench_compare);
         step.dependOn(&run.step);
     }
 

@@ -8,11 +8,13 @@ const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
 const toml = @import("toml");
 
+const bench = @import("bench.zig");
 const Pattern = @import("bench_data.zig").Pattern;
 const Size = @import("bench_data.zig").Size;
 const TrackingAllocator = @import("TrackingAllocator.zig");
 
 const native_os = builtin.target.os.tag;
+const json_output = bench_options.json_output;
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 var stdout_buffer: [8192]u8 = undefined;
@@ -23,36 +25,6 @@ const Config = struct {
     max_iter: usize = 1_000,
     min_ns: u64 = 100_000_000,
     warmup_iterations: usize = 10,
-};
-
-const Result = struct {
-    iter: usize,
-    min_ns: u64,
-    max_ns: u64,
-    mean_ns: u64,
-    median_ns: u64,
-    total_bytes: u64,
-    throughput_mbs: f64,
-    total_allocated: u64,
-    total_freed: u64,
-    live_bytes: u64,
-    peak_live_bytes: u64,
-    alloc_count: u64,
-
-    pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.print("    {d} iterations\n", .{self.iter});
-        try writer.print("    {d} total bytes\n\n", .{self.total_bytes});
-        try writer.print("    throughput:  {d}MB/s\n", .{self.throughput_mbs});
-        try writer.print("    allocated:   {d}B per run\n", .{self.total_allocated});
-        try writer.print("    freed:       {d}B per run\n", .{self.total_freed});
-        try writer.print("    retained:    {d}B per run\n", .{self.live_bytes});
-        try writer.print("    peak live:   {d}B per run\n", .{self.peak_live_bytes});
-        try writer.print("    allocations: {d} per run\n\n", .{self.alloc_count});
-        try writer.print("    min:         {s}\n", .{formatTime(self.min_ns)});
-        try writer.print("    max:         {s}\n", .{formatTime(self.max_ns)});
-        try writer.print("    mean:        {s}\n", .{formatTime(self.mean_ns)});
-        try writer.print("    median:      {s}", .{formatTime(self.median_ns)});
-    }
 };
 
 const MemoryResult = struct {
@@ -84,10 +56,12 @@ pub fn main() !void {
     var stderr_stream = std.fs.File.stderr().writerStreaming(&stderr_buffer);
     const stderr = &stderr_stream.interface;
 
-    try stdout.writeAll("==================\n");
-    try stdout.writeAll("toml-zig benchmark\n");
-    try stdout.writeAll("==================\n");
-    try stdout.flush();
+    if (!json_output) {
+        try stdout.writeAll("==================\n");
+        try stdout.writeAll("toml-zig benchmark\n");
+        try stdout.writeAll("==================\n");
+        try stdout.flush();
+    }
 
     const cwd = std.fs.cwd();
 
@@ -132,9 +106,14 @@ pub fn main() !void {
         }
     }
 
+    var results: ArrayList(bench.Result) = .empty;
+    defer results.deinit(gpa);
+
     for (fixtures.items) |fixture| {
-        try stdout.print("\n{s}", .{fixture});
-        try stdout.flush();
+        if (!json_output) {
+            try stdout.print("\n{s}", .{fixture});
+            try stdout.flush();
+        }
 
         const i = std.mem.indexOfScalar(
             u8,
@@ -181,7 +160,9 @@ pub fn main() !void {
         const data = try reader.allocRemaining(gpa, .unlimited);
         defer gpa.free(data);
 
-        try stdout.print(" ({d} bytes)\n", .{data.len});
+        if (!json_output) {
+            try stdout.print(" ({d} bytes)\n", .{data.len});
+        }
 
         const config: Config = switch (size) {
             .tiny => .{
@@ -206,19 +187,30 @@ pub fn main() !void {
             },
         };
 
-        const result = run(gpa, benchDecodeTiming, benchDecodeTracking, data, config);
-        try stdout.print("{f}\n", .{result});
+        const result = run(gpa, fixture, benchDecodeTiming, benchDecodeTracking, data, config);
+
+        if (json_output) {
+            try results.append(gpa, result);
+        } else {
+            try stdout.print("{f}\n", .{result});
+            try stdout.flush();
+        }
+    }
+
+    if (json_output) {
+        try stdout.print("{f}\n", .{std.json.fmt(results.items, .{})});
         try stdout.flush();
     }
 }
 
 fn run(
     gpa: Allocator,
+    fixture: []const u8,
     comptime timing: fn (Allocator, []const u8) anyerror!u64,
     comptime memory: fn (*TrackingAllocator, []const u8) anyerror!MemoryResult,
     data: []const u8,
     config: Config,
-) Result {
+) bench.Result {
     var times: ArrayList(u64) = .empty;
     defer times.deinit(gpa);
 
@@ -261,6 +253,8 @@ fn run(
     const memory_result = memory(&tracking, data) catch |err| std.debug.panic("benchmark failed: {t}", .{err});
 
     return .{
+        .fixture = fixture,
+        .input_bytes = data.len,
         .iter = iter,
         .min_ns = min_ns,
         .max_ns = max_ns,
@@ -274,20 +268,6 @@ fn run(
         .peak_live_bytes = memory_result.peak_live_bytes,
         .alloc_count = memory_result.alloc_count,
     };
-}
-
-fn formatTime(ns: u64) [10]u8 {
-    var buf: [10]u8 = [_]u8{' '} ** 10;
-    if (ns < 1_000) {
-        _ = std.fmt.bufPrint(&buf, "{d: >6}ns", .{ns}) catch unreachable;
-    } else if (ns < 1_000_000) {
-        _ = std.fmt.bufPrint(&buf, "{d: >6.2}us", .{@as(f64, @floatFromInt(ns)) / 1_000.0}) catch unreachable;
-    } else if (ns < 1_000_000_000) {
-        _ = std.fmt.bufPrint(&buf, "{d: >6.2}ms", .{@as(f64, @floatFromInt(ns)) / 1_000_000.0}) catch unreachable;
-    } else {
-        _ = std.fmt.bufPrint(&buf, "{d: >6.2}s ", .{@as(f64, @floatFromInt(ns)) / 1_000_000_000.0}) catch unreachable;
-    }
-    return buf;
 }
 
 fn benchDecodeTiming(gpa: Allocator, data: []const u8) !u64 {
