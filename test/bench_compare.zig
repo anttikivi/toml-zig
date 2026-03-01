@@ -41,16 +41,14 @@ pub fn main() !void {
     var stderr_stream = std.fs.File.stderr().writerStreaming(&stderr_buffer);
     const stderr = &stderr_stream.interface;
 
-    const zig_path = bench_options.zig_path;
-    const zig_realpath = try std.fs.cwd().realpathAlloc(gpa, zig_path);
-    defer gpa.free(zig_realpath);
+    const zig_exe = bench_options.zig_exe;
     const benchmarks = bench_options.benchmarks_arg;
     const compare_refs = bench_options.compare_refs;
 
     try stderr.writeAll("benchmarking HEAD...\n");
     try stderr.flush();
 
-    const head_json = runBench(gpa, zig_path, benchmarks, null, stderr) catch |err| {
+    const head_json = runBench(gpa, zig_exe, benchmarks, null, stderr) catch |err| {
         try stderr.print("failed to run benchmarks for HEAD: {t}\n", .{err});
         try stderr.flush();
         return err;
@@ -149,7 +147,7 @@ pub fn main() !void {
             }
         }
 
-        const ref_json = runBench(gpa, zig_realpath, benchmarks, tmp_dir.name, stderr) catch |err| {
+        const ref_json = runBench(gpa, zig_exe, benchmarks, tmp_dir.name, stderr) catch |err| {
             try stderr.print("failed to run benchmarks for '{s}': {t}\n", .{ ref, err });
             try stderr.flush();
             continue;
@@ -219,7 +217,7 @@ fn execCmd(gpa: Allocator, argv: []const []const u8, cwd: ?[]const u8, stderr: *
 
 fn runBench(
     gpa: Allocator,
-    zig_path: []const u8,
+    zig_exe: []const u8,
     benchmarks: []const u8,
     cwd: ?[]const u8,
     stderr: *std.Io.Writer,
@@ -228,7 +226,7 @@ fn runBench(
     defer gpa.free(benchmarks_arg);
 
     return execCmd(gpa, &.{
-        zig_path,
+        zig_exe,
         "build",
         "bench",
         benchmarks_arg,

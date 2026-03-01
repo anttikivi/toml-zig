@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: © 2026 Antti Kivi <antti@anttikivi.com>
 // SPDX-License-Identifier: Apache-2.0
 
+const builtin = @import("builtin");
 const std = @import("std");
 const ArrayList = std.ArrayList;
 
@@ -158,7 +159,7 @@ pub fn build(b: *std.Build) void {
         compare_options.addOption(u8, "max_nesting", bench_max_nesting);
         compare_options.addOption(bool, "random_bench", random_bench);
         compare_options.addOption(bool, "json_output", false);
-        compare_options.addOption([]const u8, "zig_path", b.pathJoin(&.{ "tools", ".zig", "zig" }));
+        compare_options.addOption([]const u8, "zig_exe", b.graph.zig_exe);
         compare_options.addOption([]const u8, "benchmarks_arg", benchmarks_list);
 
         {
