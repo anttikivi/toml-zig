@@ -1,0 +1,14 @@
+version = 1
+
+[[annotations]]
+path = [
+  "**/*.md",
+  "**/.gitignore",
+  ".gitattributes",
+  ".mailmap",
+  "build.zig.zon",
+  "NOTICE",
+  "renovate.json",
+]
+SPDX-FileCopyrightText = "© 2026 Antti Kivi <antti@anttikivi.com>"
+SPDX-License-Identifier = "Apache-2.0"
