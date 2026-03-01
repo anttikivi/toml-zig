@@ -9,6 +9,9 @@ A TOML parser library for Zig.
 
 The library currently uses Zig 0.15.2.
 
+See the [roadmap](https://codeberg.org/anttikivi/toml-zig/projects/40223) for
+planned features, changes, and improvements.
+
 ## Usage
 
 Parse a TOML document with `toml.decode`. Parsing the document decodes it into
