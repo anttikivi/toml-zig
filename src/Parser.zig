@@ -24,6 +24,8 @@ const Time = @import("value.zig").Time;
 const Value = @import("value.zig").Value;
 
 arena: Allocator,
+gpa: Allocator,
+scratch: Allocator = undefined,
 scanner: Scanner,
 diagnostics: ?*Diagnostics = null,
 
@@ -158,8 +160,9 @@ const ParsingTable = struct {
     fn put(self: *Self, gpa: Allocator, key: []const u8, val: ParsingValue) Allocator.Error!void {
         try self.entries.append(gpa, .{ .key = key, .value = val });
 
-        if (self.index) |*index| {
+        if (self.index != null) {
             try self.growIfNeeded(gpa);
+            const index = &self.index.?;
 
             const i: u32 = @intCast(self.entries.items.len - 1);
             const hash = std.hash.Wyhash.hash(0, key);
@@ -205,13 +208,19 @@ const ParsingTable = struct {
 pub fn init(arena: Allocator, gpa: Allocator, input: []const u8, opts: DecodeOptions) Parser {
     return .{
         .arena = arena,
+        .gpa = gpa,
         .scanner = .init(gpa, input, opts),
         .diagnostics = opts.diagnostics,
     };
 }
 
 pub fn parse(self: *Parser) Error!Table {
+    var scratch_arena: std.heap.ArenaAllocator = .init(self.gpa);
+    defer scratch_arena.deinit();
+    self.scratch = scratch_arena.allocator();
+
     var root: ParsingTable = .{};
+
     var current = &root;
 
     while (self.scanner.cursor < self.scanner.input.len) {
@@ -269,7 +278,7 @@ fn parseTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable {
     }
 
     const new_table: ParsingTable = .{ .flag = .{ .standard = true, .explicit = true } };
-    try table.put(self.arena, try self.arena.dupe(u8, last_key), .{
+    try table.put(self.scratch, last_key, .{
         .flag = .{ .standard = true, .explicit = true },
         .value = .{ .table = new_table },
     });
@@ -318,7 +327,7 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
             }
         } else {
             const new_table: ParsingTable = .{ .flag = .{ .standard = true } };
-            try table.put(self.arena, try self.arena.dupe(u8, key), .{
+            try table.put(self.scratch, key, .{
                 .flag = .{ .standard = true },
                 .value = .{ .table = new_table },
             });
@@ -335,7 +344,7 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
                     return self.fail(.{ .@"error" = error.ExtendedInlineArray });
                 }
 
-                try arr.append(self.arena, .{ .value = .{ .table = .{} } });
+                try arr.append(self.scratch, .{ .value = .{ .table = .{} } });
 
                 return &arr.items[arr.items.len - 1].value.table;
             },
@@ -344,8 +353,8 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
     }
 
     var arr: ParsingArray = .empty;
-    try arr.append(self.arena, .{ .value = .{ .table = .{} } });
-    try table.put(self.arena, try self.arena.dupe(u8, last_key), .{ .value = .{ .array = arr } });
+    try arr.append(self.scratch, .{ .value = .{ .table = .{} } });
+    try table.put(self.scratch, last_key, .{ .value = .{ .array = arr } });
     const ptr = table.getPtr(last_key).?;
     const array_ptr = &ptr.value.array;
     const last = &array_ptr.items[array_ptr.items.len - 1];
@@ -378,7 +387,7 @@ fn parseKeyValue(self: *Parser, first_token: Token, current_table: *ParsingTable
                 return self.fail(.{ .@"error" = error.InvalidTable });
             }
 
-            try table.put(self.arena, try self.arena.dupe(u8, key), .{ .value = .{ .table = .{} } });
+            try table.put(self.scratch, key, .{ .value = .{ .table = .{} } });
 
             const ptr = table.getPtr(key).?;
             table = &ptr.value.table;
@@ -399,7 +408,7 @@ fn parseKeyValue(self: *Parser, first_token: Token, current_table: *ParsingTable
     }
 
     const val = try self.parseValue(token);
-    try table.put(self.arena, try self.arena.dupe(u8, final_key), val);
+    try table.put(self.scratch, final_key, val);
 
     token = try self.scanner.nextKey();
     if (token != .line_feed and token != .end_of_file) {
@@ -411,11 +420,11 @@ fn parseKey(self: *Parser, first: Token) Error![][]const u8 {
     var parts: ArrayList([]const u8) = .empty;
 
     const first_part = switch (first) {
-        .literal, .literal_string => |s| s,
+        .literal, .literal_string => |s| try self.arena.dupe(u8, s),
         .string => |s| try self.normalizeString(s, false),
         else => return self.fail(.{ .@"error" = error.UnexpectedToken }),
     };
-    try parts.append(self.arena, first_part);
+    try parts.append(self.scratch, first_part);
 
     while (self.scanner.cursor < self.scanner.input.len) {
         const cursor = self.scanner.cursor;
@@ -430,21 +439,21 @@ fn parseKey(self: *Parser, first: Token) Error![][]const u8 {
 
         const tok = try self.scanner.nextKey();
         const next = switch (tok) {
-            .literal, .literal_string => |s| s,
+            .literal, .literal_string => |s| try self.arena.dupe(u8, s),
             .string => |s| try self.normalizeString(s, false),
             else => return self.fail(.{ .@"error" = error.UnexpectedToken }),
         };
-        try parts.append(self.arena, next);
+        try parts.append(self.scratch, next);
     }
 
-    return parts.toOwnedSlice(self.arena);
+    return parts.toOwnedSlice(self.scratch);
 }
 
 fn parseValue(self: *Parser, token: Token) Error!ParsingValue {
     return switch (token) {
         .string => |s| .{ .value = .{ .string = try self.normalizeString(s, false) } },
         .multiline_string => |s| .{ .value = .{ .string = try self.normalizeString(s, true) } },
-        .literal_string, .multiline_literal_string => |s| .{ .value = .{ .string = s } },
+        .literal_string, .multiline_literal_string => |s| .{ .value = .{ .string = try self.arena.dupe(u8, s) } },
         .int => |i| .{ .value = .{ .int = i } },
         .float => |f| .{ .value = .{ .float = f } },
         .bool => |b| .{ .value = .{ .bool = b } },
@@ -460,6 +469,7 @@ fn parseValue(self: *Parser, token: Token) Error!ParsingValue {
 
 fn parseInlineArray(self: *Parser) Error!ParsingValue {
     var arr: ParsingArray = .empty;
+
     var need_comma = false;
 
     while (true) {
@@ -486,7 +496,7 @@ fn parseInlineArray(self: *Parser) Error!ParsingValue {
         }
 
         const val = try self.parseValue(token);
-        try arr.append(self.arena, val);
+        try arr.append(self.scratch, val);
         need_comma = true;
     }
 
@@ -497,6 +507,7 @@ fn parseInlineArray(self: *Parser) Error!ParsingValue {
 
 fn parseInlineTable(self: *Parser) Error!ParsingValue {
     var table: ParsingTable = .{ .flag = .{ .inlined = true } };
+
     var need_comma = false;
     var was_comma = false;
 
@@ -557,7 +568,7 @@ fn parseInlineTable(self: *Parser) Error!ParsingValue {
                     else => return self.fail(.{ .@"error" = error.InvalidTable }),
                 }
             } else {
-                try current.put(self.arena, try self.arena.dupe(u8, key), .{ .value = .{ .table = .{} } });
+                try current.put(self.scratch, key, .{ .value = .{ .table = .{} } });
                 const ptr = current.getPtr(key).?;
                 current = &ptr.value.table;
             }
@@ -572,7 +583,7 @@ fn parseInlineTable(self: *Parser) Error!ParsingValue {
         var val = try self.parseValue(token);
         val.flag.explicit = true;
 
-        try current.put(self.arena, final_key, val);
+        try current.put(self.scratch, final_key, val);
 
         need_comma = true;
         was_comma = false;
@@ -613,7 +624,7 @@ fn descendToTable(self: *Parser, keys: [][]const u8, root: *ParsingTable, is_sta
             var new_table: ParsingTable = .{};
             new_table.flag.standard = is_standard;
 
-            try table.put(self.arena, try self.arena.dupe(u8, key), .{
+            try table.put(self.scratch, key, .{
                 .flag = .{ .standard = is_standard },
                 .value = .{ .table = new_table },
             });
@@ -628,7 +639,7 @@ fn descendToTable(self: *Parser, keys: [][]const u8, root: *ParsingTable, is_sta
 
 fn normalizeString(self: *Parser, s: []const u8, multiline: bool) Error![]const u8 {
     if (std.mem.indexOfScalar(u8, s, '\\') == null) {
-        return s;
+        return self.arena.dupe(u8, s);
     }
 
     var result: ArrayList(u8) = .empty;
@@ -1089,6 +1100,30 @@ test "parse basic string value" {
     );
     defer result.deinit();
     try expectString(&result.root, "name", "Tom");
+}
+
+test "parsed table retains data after input is freed" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    var root: Table = undefined;
+
+    {
+        const input = try std.testing.allocator.dupe(u8,
+            \\name = "Tom"
+            \\
+        );
+        defer std.testing.allocator.free(input);
+
+        var parser: Parser = .init(arena.allocator(), std.testing.allocator, input, .{});
+        root = try parser.parse();
+    }
+
+    const clobber = try std.testing.allocator.alloc(u8, 64);
+    defer std.testing.allocator.free(clobber);
+    @memset(clobber, 'X');
+
+    try expectString(&root, "name", "Tom");
 }
 
 test "parse literal string value" {
