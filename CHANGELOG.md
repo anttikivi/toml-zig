@@ -22,6 +22,8 @@ and this project adheres to
 ### Changed
 
 - Change the license of the library to Apache-2.0.
+- Clean up the allocations made in the `Parser`.
+- Use temporary arena allocator for the intermediate allocations when parsing.
 
 ### Fixed
 
@@ -32,6 +34,8 @@ and this project adheres to
 - Fix possible out-of-bounds access to the input slice in the scanner when
   parsing multiline literal strings.
 - Fix the table hash lookup not probing the last bucket.
+- Fix off-by-one error in `Diagnostics` when getting the code snippet and line
+  of an error.
 
 ## [0.1.0] - 2026-02-27
 
