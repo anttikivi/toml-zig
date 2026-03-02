@@ -64,20 +64,14 @@ pub fn build(b: *std.Build) void {
         "random-bench",
         "Use random number generator for generating the benchmark input values instead of deterministic calculation",
     ) orelse false;
-    const table_index_threshold = b.option(
-        u32,
-        "table-index-threshold",
-        "Threshold for the parsed TOML tables for switching from linear lookup to hashes. Must be a power of 2",
-    ) orelse 64;
     const toml_test_timeout = b.option(
         []const u8,
         "toml-test-timeout",
         "Timeout value to pass to 'toml-test' runs. The value is passed to 'toml-test' as is. Default is '1s'",
-    ) orelse "1s";
+    ) orelse "5s";
 
     const options = b.addOptions();
     options.addOption(u32, "min_index_capacity", min_index_capacity);
-    options.addOption(u32, "table_index_threshold", table_index_threshold);
 
     const toml_mod = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
