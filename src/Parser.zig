@@ -548,7 +548,6 @@ fn parseInlineTable(self: *Parser) Error!ParsingValue {
 
         const keys = try self.parseKey(token);
 
-        // TODO: Is a newline allowed here?
         token = try self.scanner.nextValue();
         if (token != .equal) {
             return self.fail(.{ .@"error" = error.UnexpectedToken, .msg = "expected an equals sign" });
@@ -615,8 +614,6 @@ fn descendToTable(self: *Parser, keys: [][]const u8, root: *ParsingTable, is_sta
                         else => return self.fail(.{ .@"error" = error.InvalidTable }),
                     }
                 },
-                // TODO: Not so sure which error to choose here, but that's what
-                // the UnexpectedToken is for.
                 else => return self.fail(.{ .@"error" = error.UnexpectedToken }),
             }
         } else {

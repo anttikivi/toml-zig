@@ -4,13 +4,20 @@ A TOML parser library for Zig.
 
 - Supports both TOML v1.1.0 and v1.0.0.
 - Supports optional, more detailed diagnostics.
+- Offers reasonable performance.
 - Passes the
   [standard `toml-test` suite](https://github.com/toml-lang/toml-test/).
 
 The library currently uses Zig 0.15.2.
 
 See the [roadmap](https://codeberg.org/anttikivi/toml-zig/projects/40223) for
-planned features, changes, and improvements.
+planned features, changes, and improvements. High-level goals I'd like to
+explore at some point in the future are:
+
+- Improving the performance.
+- Decoding TOML documents directly into user-defined Zig structs.
+- Encoding data into TOML and adding a parser that allows editing TOML with
+  formatting preserved.
 
 ## Usage
 

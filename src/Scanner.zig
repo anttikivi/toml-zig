@@ -314,15 +314,12 @@ fn scanString(self: *Scanner) !Token {
                 else => return self.fail(.{ .@"error" = error.InvalidEscapeSequence }),
             }
         } else if (isValidChar(c) or c == ' ' or c == '\t') {
-            // TODO: See the uses for `isValidChar` and determine if
-            // the whitespaces should be included in it.
             self.cursor += 1;
         } else {
             return self.fail(.{ .@"error" = error.InvalidControlCharacter });
         }
     }
 
-    // TODO: Do we compare self.input[self.cursor] != '"' here?
     if (self.cursor >= self.input.len) {
         return self.fail(.{ .@"error" = error.UnterminatedString });
     }
@@ -531,7 +528,6 @@ fn scanLiteralString(self: *Scanner) Error!Token {
         }
     }
 
-    // TODO: Do we compare self.input[self.cursor] != '\'' here?
     if (self.cursor >= self.input.len) {
         return self.fail(.{ .@"error" = error.UnterminatedString });
     }
