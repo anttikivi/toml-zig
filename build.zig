@@ -49,6 +49,31 @@ pub fn build(b: *std.Build) void {
         "bench-seed",
         "Seed to use for generating the benchmark input data when randomizing the generation is enabled",
     ) orelse 0xdead_beef;
+    const bench_output = b.option(
+        []const u8,
+        "bench-output",
+        "Benchmark output mode: summary, full, or json",
+    ) orelse "summary";
+    const bench_top = b.option(
+        u32,
+        "bench-top",
+        "How many top index configurations to print in summary mode (0 = all)",
+    ) orelse 5;
+    const bench_rank_by = b.option(
+        []const u8,
+        "bench-rank-by",
+        "How to rank index configurations in summary mode: parse, lookup, balanced",
+    ) orelse "balanced";
+    const bench_max_regression_pct = b.option(
+        f64,
+        "bench-max-regression-pct",
+        "Max allowed parse/lookup regression percent for balanced summary filtering",
+    ) orelse 5.0;
+    const bench_sweep_index_configs = b.option(
+        bool,
+        "bench-sweep-index-configs",
+        "Benchmark all index config combinations instead of only the default config",
+    ) orelse true;
     const compare_refs_list = b.option(
         []const u8,
         "compare-refs",
@@ -104,6 +129,13 @@ pub fn build(b: *std.Build) void {
     const bench_options = b.addOptions();
     bench_options.addOption([]const u8, "data_path", bench_data_path);
     bench_options.addOption(u64, "bench_seed", bench_seed);
+    bench_options.addOption([]const u8, "output_mode", bench_output);
+    bench_options.addOption(u32, "top_n", bench_top);
+    bench_options.addOption([]const u8, "rank_by", bench_rank_by);
+    bench_options.addOption(f64, "max_regression_pct", bench_max_regression_pct);
+    bench_options.addOption(bool, "sweep_index_configs", bench_sweep_index_configs);
+    bench_options.addOption(u32, "default_min_table_index_capacity", min_index_capacity);
+    bench_options.addOption(u32, "default_table_hash_index_threshold", table_index_threshold);
     bench_options.addOption(u8, "max_nesting", bench_max_nesting);
     bench_options.addOption(bool, "random_bench", random_bench);
     bench_options.addOption(bool, "json_output", bench_json);
@@ -119,8 +151,8 @@ pub fn build(b: *std.Build) void {
 
         bench_options.addOption([]const []const u8, "benchmarks", benchmarks);
     }
+    const generate_bench_data_step = b.step("generate-bench-data", "Generate data for running the benchmarks");
     {
-        const step = b.step("generate-bench-data", "Generate data for running the benchmarks");
         const generate_bench_data = b.addExecutable(.{
             .name = "generate-bench-data",
             .root_module = b.createModule(.{
@@ -133,7 +165,7 @@ pub fn build(b: *std.Build) void {
         generate_bench_data.root_module.addOptions("bench_options", bench_options);
 
         const run = b.addRunArtifact(generate_bench_data);
-        step.dependOn(&run.step);
+        generate_bench_data_step.dependOn(&run.step);
     }
     {
         const step = b.step("bench", "Run the bechmarks for the current revision");
@@ -150,6 +182,7 @@ pub fn build(b: *std.Build) void {
         bench.root_module.addImport("toml", toml_mod);
 
         const run = b.addRunArtifact(bench);
+        step.dependOn(generate_bench_data_step);
         step.dependOn(&run.step);
     }
     {
@@ -160,6 +193,9 @@ pub fn build(b: *std.Build) void {
         compare_options.addOption(u8, "max_nesting", bench_max_nesting);
         compare_options.addOption(bool, "random_bench", random_bench);
         compare_options.addOption(bool, "json_output", false);
+        compare_options.addOption(bool, "sweep_index_configs", false);
+        compare_options.addOption(u32, "default_min_table_index_capacity", min_index_capacity);
+        compare_options.addOption(u32, "default_table_hash_index_threshold", table_index_threshold);
         compare_options.addOption([]const u8, "zig_exe", b.graph.zig_exe);
         compare_options.addOption([]const u8, "benchmarks_arg", benchmarks_list);
 

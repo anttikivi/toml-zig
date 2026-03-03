@@ -14,15 +14,15 @@ const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789_-";
 const nums = "0123456789";
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
-var stdout_buffer: [8192]u8 = undefined;
 var stderr_buffer: [8192]u8 = undefined;
+
+fn effectiveMaxNesting() usize {
+    return @max(@as(usize, 1), @as(usize, bench_options.max_nesting));
+}
 
 pub fn main() !void {
     const gpa = debug_allocator.allocator();
     defer _ = debug_allocator.deinit();
-
-    var stdout_stream = std.fs.File.stdout().writerStreaming(&stdout_buffer);
-    const stdout = &stdout_stream.interface;
 
     var stderr_stream = std.fs.File.stderr().writerStreaming(&stderr_buffer);
     const stderr = &stderr_stream.interface;
@@ -71,8 +71,8 @@ pub fn main() !void {
     }
 
     for (fixtures.items) |fixture| {
-        try stdout.print("generating {s}\n", .{fixture});
-        try stdout.flush();
+        try stderr.print("generating {s}\n", .{fixture});
+        try stderr.flush();
 
         const i = std.mem.indexOfScalar(
             u8,
@@ -132,8 +132,8 @@ pub fn main() !void {
         const full_path = try std.fs.path.join(gpa, &.{ bench_options.data_path, filename });
         defer gpa.free(full_path);
 
-        try stdout.print("wrote {d} bytes to {s}\n", .{ data.len, full_path });
-        try stdout.flush();
+        try stderr.print("wrote {d} bytes to {s}\n", .{ data.len, full_path });
+        try stderr.flush();
     }
 }
 
@@ -147,7 +147,6 @@ fn generateArrayTablesDeterministic(arena: Allocator, target_size: usize) ![]con
         const name = array_names[i % array_names.len];
         try appendPrint(arena, &result, "[[{s}]]\n", .{name});
         const s = try generateKeyValueDeterministic(arena, i);
-        defer arena.free(s);
         try result.appendSlice(arena, s);
         try appendPrint(arena, &result, "name = \"item_{d}\"\n", .{i});
         try appendPrint(arena, &result, "enabled = {s}\n", .{if (i % 2 == 0) "true" else "false"});
@@ -159,8 +158,6 @@ fn generateArrayTablesDeterministic(arena: Allocator, target_size: usize) ![]con
 
 fn generateArrayTablesRandom(arena: Allocator, rand: std.Random, target_size: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
-    errdefer result.deinit(arena);
-
     var array_names: ArrayList([]const u8) = .empty;
     const tables = rand.intRangeAtMost(usize, 4, 9);
 
@@ -269,7 +266,7 @@ fn generateInlineHeavyRandom(arena: Allocator, rand: std.Random, target_size: us
 fn generateInlineArrayDeterministic(arena: Allocator, pos: usize, nesting: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
 
-    const nested = if (nesting <= bench_options.max_nesting) blk: {
+    const nested = if (nesting < effectiveMaxNesting()) blk: {
         break :blk try generateInlineArrayDeterministic(arena, pos + 1, nesting + 1);
     } else "\"last\"";
 
@@ -323,7 +320,7 @@ fn generateInlineArrayDeterministic(arena: Allocator, pos: usize, nesting: usize
 fn generateInlineTableDeterministic(arena: Allocator, pos: usize, nesting: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
 
-    const nested = if (nesting <= bench_options.max_nesting) blk: {
+    const nested = if (nesting < effectiveMaxNesting()) blk: {
         break :blk try generateInlineTableDeterministic(arena, pos + 1, nesting + 1);
     } else blk: {
         const keyval = try generateKeyValueDeterministic(arena, nesting);
@@ -567,7 +564,7 @@ fn generateNestedTablesDeterministic(arena: Allocator, target_size: usize) ![]co
 
         var path: ArrayList(u8) = .empty;
         try path.appendSlice(arena, root);
-        const depth = (i % bench_options.max_nesting) + 1;
+        const depth = (i % effectiveMaxNesting()) + 1;
         for (0..depth) |d| {
             try appendPrint(arena, &path, ".level_{d}", .{d});
         }
@@ -601,7 +598,7 @@ fn generateNestedTablesRandom(arena: Allocator, rand: std.Random, target_size: u
 
         var path: ArrayList(u8) = .empty;
         try path.appendSlice(arena, root);
-        const depth = rand.intRangeAtMost(usize, 1, bench_options.max_nesting);
+        const depth = rand.intRangeAtMost(usize, 1, effectiveMaxNesting());
         for (0..depth) |_| {
             try path.append(arena, '.');
             try appendRandomString(arena, rand, &path, 3, 8);
@@ -817,7 +814,7 @@ fn generateKeyValueDeterministic(arena: Allocator, i: usize) ![]const u8 {
 fn generateInlineArrayRandom(arena: Allocator, rand: std.Random, pos: usize, nesting: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
 
-    const nested = if (nesting <= bench_options.max_nesting) blk: {
+    const nested = if (nesting < effectiveMaxNesting()) blk: {
         break :blk try generateInlineArrayRandom(arena, rand, pos + 1, nesting + 1);
     } else try std.mem.concat(arena, u8, &.{ "\"", try randomStringRange(arena, rand, 5, 12), "\"" });
 
@@ -875,7 +872,7 @@ fn generateInlineArrayRandom(arena: Allocator, rand: std.Random, pos: usize, nes
 fn generateInlineTableRandom(arena: Allocator, rand: std.Random, pos: usize, nesting: usize) ![]const u8 {
     var result: ArrayList(u8) = .empty;
 
-    const nested = if (nesting <= bench_options.max_nesting) blk: {
+    const nested = if (nesting < effectiveMaxNesting()) blk: {
         break :blk try generateInlineTableRandom(arena, rand, pos + 1, nesting + 1);
     } else blk: {
         const keyval = try generateKeyValueRandom(arena, rand, nesting);
