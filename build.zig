@@ -54,22 +54,37 @@ pub fn build(b: *std.Build) void {
         "compare-refs",
         "Comma-separated list of git refs to compare benchmarks against (for bench-compare step)",
     ) orelse "v0.1.0";
+    const min_index_capacity = b.option(
+        u32,
+        "min-index-capacity",
+        "Minimum initial index capacity for older revisions that use compile-time table index options",
+    ) orelse 16;
     const random_bench = b.option(
         bool,
         "random-bench",
         "Use random number generator for generating the benchmark input values instead of deterministic calculation",
     ) orelse false;
+    const table_index_threshold = b.option(
+        u32,
+        "table-index-threshold",
+        "Table size threshold for enabling hash index in older revisions that use compile-time options",
+    ) orelse 64;
     const toml_test_timeout = b.option(
         []const u8,
         "toml-test-timeout",
         "Timeout value to pass to 'toml-test' runs. The value is passed to 'toml-test' as is. Default is '1s'",
     ) orelse "5s";
 
+    const build_options = b.addOptions();
+    build_options.addOption(u32, "min_index_capacity", min_index_capacity);
+    build_options.addOption(u32, "table_index_threshold", table_index_threshold);
+
     const toml_mod = b.createModule(.{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
+    toml_mod.addOptions("build_options", build_options);
 
     // Add the library to the package's module set
     b.modules.put("toml", toml_mod) catch @panic("OOM");
