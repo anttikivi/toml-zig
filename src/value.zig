@@ -57,7 +57,7 @@ pub const Value = union(enum) {
                     if (i > 0) {
                         try writer.writeAll(", ");
                     }
-                    try writer.print("{s} = {f}", .{ entry.key_ptr.*, entry.value_ptr.* });
+                    try writer.print("{s} = {f}", .{ entry.key, entry.value });
                 }
                 try writer.writeByte('}');
             },
@@ -254,6 +254,21 @@ pub const Table = struct {
         value: Value,
     };
 
+    pub const Iterator = struct {
+        entries: []const Entry,
+        cursor: usize = 0,
+
+        pub fn next(self: *@This()) ?*const Entry {
+            if (self.cursor >= self.entries.len) {
+                return null;
+            }
+
+            const entry = &self.entries[self.cursor];
+            self.cursor += 1;
+            return entry;
+        }
+    };
+
     pub fn HashIndex(comptime E: type) type {
         return struct {
             buckets: []u32,
@@ -312,32 +327,34 @@ pub const Table = struct {
 
     pub const Index = HashIndex(Entry);
 
+    pub fn iterator(self: *const Self) Iterator {
+        return .{ .entries = self.entries };
+    }
+
     pub fn contains(self: *const Self, key: []const u8) bool {
         return self.get(key) != null;
     }
 
     pub fn get(self: *const Self, key: []const u8) ?Value {
-        if (self.index) |index| {
-            if (index.lookup(self.entries, key)) |i| {
-                return self.entries[i].value;
-            }
-
-            return null;
-        }
-
-        for (self.entries) |entry| {
-            if (std.mem.eql(u8, entry.key, key)) {
-                return entry.value;
-            }
+        if (self.getEntryPtr(key)) |entry| {
+            return entry.value;
         }
 
         return null;
     }
 
     pub fn getPtr(self: *const Self, key: []const u8) ?*const Value {
+        if (self.getEntryPtr(key)) |entry| {
+            return &entry.value;
+        }
+
+        return null;
+    }
+
+    pub fn getEntryPtr(self: *const Self, key: []const u8) ?*const Entry {
         if (self.index) |index| {
             if (index.lookup(self.entries, key)) |i| {
-                return &self.entries[i].value;
+                return &self.entries[i];
             }
 
             return null;
@@ -345,13 +362,69 @@ pub const Table = struct {
 
         for (self.entries) |*entry| {
             if (std.mem.eql(u8, entry.key, key)) {
-                return &entry.value;
+                return entry;
+            }
+        }
+
+        return null;
+    }
+
+    pub fn getPath(self: *const Self, parts: []const []const u8) ?*const Value {
+        if (parts.len == 0) {
+            return null;
+        }
+
+        var table = self;
+        for (parts, 0..) |part, i| {
+            const value = table.getPtr(part) orelse return null;
+            if (i == parts.len - 1) {
+                return value;
+            }
+
+            switch (value.*) {
+                .table => |*next_table| table = next_table,
+                else => return null,
             }
         }
 
         return null;
     }
 };
+
+test "Table iterator, getEntryPtr, and getPath" {
+    const testing = std.testing;
+
+    const nested_entries = [_]Table.Entry{
+        .{ .key = "c", .value = .{ .int = 1 } },
+        .{ .key = "d.e", .value = .{ .string = "dot-key" } },
+    };
+    const nested: Table = .{ .entries = &nested_entries };
+
+    const root_entries = [_]Table.Entry{
+        .{ .key = "a", .value = .{ .table = nested } },
+        .{ .key = "a.b", .value = .{ .int = 2 } },
+    };
+    const root: Table = .{ .entries = &root_entries };
+
+    var it = root.iterator();
+    try testing.expect(it.next() != null);
+    try testing.expect(it.next() != null);
+    try testing.expect(it.next() == null);
+
+    const entry = root.getEntryPtr("a") orelse return error.TestUnexpectedResult;
+    try testing.expectEqualStrings("a", entry.key);
+
+    const nested_value = root.getPath(&.{ "a", "c" }) orelse return error.TestUnexpectedResult;
+    try testing.expectEqualDeep(Value{ .int = 1 }, nested_value.*);
+
+    const dotted_key_value = root.getPath(&.{"a.b"}) orelse return error.TestUnexpectedResult;
+    try testing.expectEqualDeep(Value{ .int = 2 }, dotted_key_value.*);
+
+    const dotted_nested_key_value = root.getPath(&.{ "a", "d.e" }) orelse return error.TestUnexpectedResult;
+    try testing.expectEqualDeep(Value{ .string = "dot-key" }, dotted_nested_key_value.*);
+
+    try testing.expect(root.getPath(&.{ "a", "missing" }) == null);
+}
 
 fn isValidTimezone(tz: i16) bool {
     const t: u16 = @abs(tz);

@@ -14,6 +14,7 @@ and this project adheres to
   hash table threshold in runtime.
 - Add `min_table_index_capacity` to `DecodeOptions` to allow controlling the
   minimum capacity reserved for the hash tables in runtime.
+- Add `iterator`, `getEntryPtr`, and `getPath` to `toml.Table`.
 - Add a benchmarking suite for measuring the parser's performance in different
   scenarios: `array_tables`, `flat_kv`, `inline_heavy`, `mixed_realistic`,
   `nested_tables`, and `string_escapes`.
