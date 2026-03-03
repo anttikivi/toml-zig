@@ -10,6 +10,10 @@ and this project adheres to
 
 ### Added
 
+- Add `table_hash_index_threshold` to `DecodeOptions` to allow controlling the
+  hash table threshold in runtime.
+- Add `min_table_index_capacity` to `DecodeOptions` to allow controlling the
+  minimum capacity reserved for the hash tables in runtime.
 - Add a benchmarking suite for measuring the parser's performance in different
   scenarios: `array_tables`, `flat_kv`, `inline_heavy`, `mixed_realistic`,
   `nested_tables`, and `string_escapes`.
@@ -24,6 +28,13 @@ and this project adheres to
 - Change the license of the library to Apache-2.0.
 - Clean up the allocations made in the `Parser`.
 - Use temporary arena allocator for the intermediate allocations when parsing.
+
+### Removed
+
+- Remove `table-index-threshold` from build options in favor of turning the
+  value into runtime configuration option.
+- Remove `min-index-capacity` from build options in favor of turning the value
+  into runtime configuration option.
 
 ### Fixed
 

@@ -14,6 +14,14 @@ pub const DecodeOptions = struct {
     /// the decoder fails.
     diagnostics: ?*Diagnostics = null,
 
+    /// The minimum capacity to reserve for the hash table when the TOML tables
+    /// switch from linear lookups to using hashes.
+    min_table_index_capacity: u32 = 16,
+
+    /// The minimum number of elements in a TOML table before switching from
+    /// linear lookups to using hashes.
+    table_hash_index_threshold: u32 = 64,
+
     /// The version of TOML to accept in the decoding.
     version: Version = .@"1.1.0",
 

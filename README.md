@@ -56,9 +56,15 @@ pub fn main() !void {
 The decoder function `toml.decode` accepts `DecodeOptions` for customizing its
 behavior:
 
-- `version`: TOML version (`.@"1.1.0"` by default)
-- `validate_utf8`: whether to validate input UTF-8 (`true` by default)
-- `diagnostics`: optional pointer to diagnostics output object
+- `version`: TOML version (`.@"1.1.0"` by default).
+- `validate_utf8`: whether to validate input UTF-8 (`true` by default).
+- `diagnostics`: optional pointer to diagnostics output object.
+- `table_hash_index_threshold`: when the number of elements in a TOML table
+  exceeds this threshold, the table switches from linear lookups to hash
+  lookups.
+- `min_table_index_capacity`: minimum capacity to reserve for the hash table
+  when the number of elements in a TOML table exceed the threshold for switching
+  from linear lookups to hash lookups.
 
 Example with diagnostics:
 

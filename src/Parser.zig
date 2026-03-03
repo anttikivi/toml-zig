@@ -4,7 +4,6 @@
 
 const Parser = @This();
 
-const build_options = @import("build_options");
 const builtin = @import("builtin");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -28,6 +27,7 @@ gpa: Allocator,
 scratch: Allocator = undefined,
 scanner: Scanner,
 diagnostics: ?*Diagnostics = null,
+parsing_config: ParsingConfig,
 
 const Error = Scanner.Error || error{
     Utf8CannotEncodeSurrogateHalf,
@@ -38,6 +38,11 @@ const ParsingFlag = struct {
     inlined: bool = false,
     standard: bool = false,
     explicit: bool = false,
+};
+
+const ParsingConfig = struct {
+    min_index_capacity: u32,
+    table_index_threshold: u32,
 };
 
 const ParsingArray = ArrayList(ParsingValue);
@@ -59,7 +64,7 @@ const ParsingValue = struct {
 
     const Self = @This();
 
-    fn toValue(self: Self, gpa: Allocator) Allocator.Error!Value {
+    fn toValue(self: Self, gpa: Allocator, config: ParsingConfig) Allocator.Error!Value {
         return switch (self.value) {
             .string => |s| .{ .string = s },
             .int => |i| .{ .int = i },
@@ -72,11 +77,11 @@ const ParsingValue = struct {
             .array => |arr| {
                 const items = try gpa.alloc(Value, arr.items.len);
                 for (arr.items, 0..) |item, i| {
-                    items[i] = try item.toValue(gpa);
+                    items[i] = try item.toValue(gpa, config);
                 }
                 return .{ .array = items };
             },
-            .table => |t| .{ .table = try t.toTable(gpa) },
+            .table => |t| .{ .table = try t.toTable(gpa, config) },
         };
     }
 };
@@ -108,14 +113,14 @@ const ParsingTable = struct {
         return false;
     }
 
-    fn ensureIndex(self: *Self, gpa: Allocator) Allocator.Error!void {
+    fn ensureIndex(self: *Self, gpa: Allocator, config: ParsingConfig) Allocator.Error!void {
         assert(self.index == null);
 
-        if (self.entries.items.len < build_options.table_index_threshold) {
+        if (self.entries.items.len < config.table_index_threshold) {
             return;
         }
 
-        var capacity = build_options.min_index_capacity;
+        var capacity = config.min_index_capacity;
         while (capacity < self.entries.items.len * 2) {
             capacity *= 2;
         }
@@ -157,7 +162,13 @@ const ParsingTable = struct {
         }
     }
 
-    fn put(self: *Self, gpa: Allocator, key: []const u8, val: ParsingValue) Allocator.Error!void {
+    fn put(
+        self: *Self,
+        gpa: Allocator,
+        config: ParsingConfig,
+        key: []const u8,
+        val: ParsingValue,
+    ) Allocator.Error!void {
         try self.entries.append(gpa, .{ .key = key, .value = val });
 
         if (self.index != null) {
@@ -174,24 +185,24 @@ const ParsingTable = struct {
 
             index.buckets[bucket] = i;
         } else {
-            try self.ensureIndex(gpa);
+            try self.ensureIndex(gpa, config);
         }
     }
 
-    fn toTable(self: Self, gpa: Allocator) Allocator.Error!Table {
+    fn toTable(self: Self, gpa: Allocator, config: ParsingConfig) Allocator.Error!Table {
         const entries = try gpa.alloc(Table.Entry, self.entries.items.len);
 
         for (self.entries.items, 0..) |entry, i| {
             entries[i] = .{
                 .key = entry.key,
-                .value = try entry.value.toValue(gpa),
+                .value = try entry.value.toValue(gpa, config),
             };
         }
 
         var index: ?Table.Index = null;
-        if (entries.len > build_options.table_index_threshold) {
+        if (entries.len > config.table_index_threshold) {
             // Find next power of 2 >= 2 * entries.len
-            var capacity: u32 = build_options.min_index_capacity;
+            var capacity: u32 = config.min_index_capacity;
             while (capacity < entries.len * 2) {
                 capacity *= 2;
             }
@@ -211,6 +222,10 @@ pub fn init(arena: Allocator, gpa: Allocator, input: []const u8, opts: DecodeOpt
         .gpa = gpa,
         .scanner = .init(gpa, input, opts),
         .diagnostics = opts.diagnostics,
+        .parsing_config = .{
+            .min_index_capacity = opts.min_table_index_capacity,
+            .table_index_threshold = opts.table_hash_index_threshold,
+        },
     };
 }
 
@@ -236,7 +251,7 @@ pub fn parse(self: *Parser) Error!Table {
         }
     }
 
-    return root.toTable(self.arena);
+    return root.toTable(self.arena, self.parsing_config);
 }
 
 fn parseTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable {
@@ -278,7 +293,7 @@ fn parseTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable {
     }
 
     const new_table: ParsingTable = .{ .flag = .{ .standard = true, .explicit = true } };
-    try table.put(self.scratch, last_key, .{
+    try table.put(self.scratch, self.parsing_config, last_key, .{
         .flag = .{ .standard = true, .explicit = true },
         .value = .{ .table = new_table },
     });
@@ -327,7 +342,7 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
             }
         } else {
             const new_table: ParsingTable = .{ .flag = .{ .standard = true } };
-            try table.put(self.scratch, key, .{
+            try table.put(self.scratch, self.parsing_config, key, .{
                 .flag = .{ .standard = true },
                 .value = .{ .table = new_table },
             });
@@ -354,7 +369,7 @@ fn parseArrayTableHeader(self: *Parser, root: *ParsingTable) Error!*ParsingTable
 
     var arr: ParsingArray = .empty;
     try arr.append(self.scratch, .{ .value = .{ .table = .{} } });
-    try table.put(self.scratch, last_key, .{ .value = .{ .array = arr } });
+    try table.put(self.scratch, self.parsing_config, last_key, .{ .value = .{ .array = arr } });
     const ptr = table.getPtr(last_key).?;
     const array_ptr = &ptr.value.array;
     const last = &array_ptr.items[array_ptr.items.len - 1];
@@ -387,7 +402,7 @@ fn parseKeyValue(self: *Parser, first_token: Token, current_table: *ParsingTable
                 return self.fail(.{ .@"error" = error.InvalidTable });
             }
 
-            try table.put(self.scratch, key, .{ .value = .{ .table = .{} } });
+            try table.put(self.scratch, self.parsing_config, key, .{ .value = .{ .table = .{} } });
 
             const ptr = table.getPtr(key).?;
             table = &ptr.value.table;
@@ -408,7 +423,7 @@ fn parseKeyValue(self: *Parser, first_token: Token, current_table: *ParsingTable
     }
 
     const val = try self.parseValue(token);
-    try table.put(self.scratch, final_key, val);
+    try table.put(self.scratch, self.parsing_config, final_key, val);
 
     token = try self.scanner.nextKey();
     if (token != .line_feed and token != .end_of_file) {
@@ -567,7 +582,7 @@ fn parseInlineTable(self: *Parser) Error!ParsingValue {
                     else => return self.fail(.{ .@"error" = error.InvalidTable }),
                 }
             } else {
-                try current.put(self.scratch, key, .{ .value = .{ .table = .{} } });
+                try current.put(self.scratch, self.parsing_config, key, .{ .value = .{ .table = .{} } });
                 const ptr = current.getPtr(key).?;
                 current = &ptr.value.table;
             }
@@ -582,7 +597,7 @@ fn parseInlineTable(self: *Parser) Error!ParsingValue {
         var val = try self.parseValue(token);
         val.flag.explicit = true;
 
-        try current.put(self.scratch, final_key, val);
+        try current.put(self.scratch, self.parsing_config, final_key, val);
 
         need_comma = true;
         was_comma = false;
@@ -621,7 +636,7 @@ fn descendToTable(self: *Parser, keys: [][]const u8, root: *ParsingTable, is_sta
             var new_table: ParsingTable = .{};
             new_table.flag.standard = is_standard;
 
-            try table.put(self.scratch, key, .{
+            try table.put(self.scratch, self.parsing_config, key, .{
                 .flag = .{ .standard = is_standard },
                 .value = .{ .table = new_table },
             });
