@@ -111,7 +111,7 @@ const Options = struct {
 };
 
 pub fn build(b: *std.Build) void {
-    const options: Options = .{
+    var options: Options = .{
         .optimize = b.standardOptimizeOption(.{}),
         .target = b.standardTargetOptions(.{}),
         .toml_test_timeout = b.option(
@@ -234,7 +234,7 @@ pub fn build(b: *std.Build) void {
 
     addGenerateBenchDataStep(b, options);
     addBenchmarkStep(b, options);
-    addBenchCompareStep(b, options);
+    addBenchCompareStep(b, &options);
     addTestStep(b, options);
     addFetchTomlTestStep(b, options);
 
@@ -442,7 +442,7 @@ fn addBenchmarkStep(b: *std.Build, opts: Options) void {
     step.dependOn(&run.step);
 }
 
-fn addBenchCompareStep(b: *std.Build, opts: Options) void {
+fn addBenchCompareStep(b: *std.Build, opts: *Options) void {
     const step = b.step("bench-compare", "Run benchmarks and compare against other revisions");
 
     const bench_compare = b.addExecutable(.{
