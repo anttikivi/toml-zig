@@ -29,6 +29,8 @@ and this project adheres to
 - Change the license of the library to Apache-2.0.
 - Clean up the allocations made in the `Parser`.
 - Use temporary arena allocator for the intermediate allocations when parsing.
+- Change the default `DecodeOptions.table_hash_index_threshold` from `64` to
+  `16` based on benchmark results.
 
 ### Removed
 

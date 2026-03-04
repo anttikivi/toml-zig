@@ -61,10 +61,10 @@ behavior:
 - `diagnostics`: optional pointer to diagnostics output object.
 - `table_hash_index_threshold`: when the number of elements in a TOML table
   exceeds this threshold, the table switches from linear lookups to hash
-  lookups.
+  lookups (`16` by default).
 - `min_table_index_capacity`: minimum capacity to reserve for the hash table
   when the number of elements in a TOML table exceed the threshold for switching
-  from linear lookups to hash lookups.
+  from linear lookups to hash lookups (`16` by default).
 
 Example with diagnostics:
 

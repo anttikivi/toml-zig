@@ -220,7 +220,7 @@ pub fn build(b: *std.Build) void {
             u32,
             "table-index-threshold",
             "Table size threshold for enabling hash index in older revisions that use compile-time options",
-        ) orelse 64,
+        ) orelse 16,
     };
 
     b.modules.put("toml", addTomlMod(b, options)) catch @panic("OOM");
