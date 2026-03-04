@@ -62,11 +62,18 @@ const Options = struct {
         return options;
     }
 
-    fn benchCompareOptions(self: Self, b: *std.Build) *std.Build.Step.Options {
+    fn benchCompareOptions(self: *Self, b: *std.Build) *std.Build.Step.Options {
+        const old_bench_json = self.bench_json;
+        const old_bench_sweep_index_configs = self.bench_sweep_index_configs;
+
+        self.bench_json = false;
+        self.bench_sweep_index_configs = false;
+
         const options = self.benchOptions(b);
 
-        options.addOption(bool, "json_output", false);
-        options.addOption(bool, "sweep_index_configs", false);
+        self.bench_json = old_bench_json;
+        self.bench_sweep_index_configs = old_bench_sweep_index_configs;
+
         options.addOption([]const []const u8, "compare_refs", self.compare_refs);
         options.addOption([]const u8, "zig_exe", b.graph.zig_exe);
 
