@@ -18,6 +18,10 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  BENCHMARKS: tiny,small,medium
+  COMPARE_REFS: v0.1.0
+
 jobs:
   shell:
     runs-on: ubuntu-latest
@@ -124,3 +128,33 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - run: .\ci\windows.ps1
+
+  bench-linux:
+    needs: [aarch64-linux, x86_64-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+      - run: ./zig build generate-bench-data -Dbenchmarks="${{ env.BENCHMARKS }}"
+      - run: ./zig build bench-compare -Dbenchmarks="${{ env.BENCHMARKS }}" -Dcompare-refs="${{ env.COMPARE_REFS }}"
+
+  bench-macos:
+    needs: [aarch64-macos, x86_64-macos]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+      - run: ./zig build generate-bench-data -Dbenchmarks="${{ env.BENCHMARKS }}"
+      - run: ./zig build bench-compare -Dbenchmarks="${{ env.BENCHMARKS }}" -Dcompare-refs="${{ env.COMPARE_REFS }}"
+
+  bench-linux:
+    needs: [aarch64-windows, x86_64-windows]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 0
+      - run: .\zig.ps1 build generate-bench-data -Dbenchmarks="${{ env.BENCHMARKS }}"
+      - run: .\zig.ps1 build bench-compare -Dbenchmarks="${{ env.BENCHMARKS }}" -Dcompare-refs="${{ env.COMPARE_REFS }}"
