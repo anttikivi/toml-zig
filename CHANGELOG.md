@@ -34,10 +34,12 @@ and this project adheres to
 
 ### Removed
 
-- Remove `table-index-threshold` from build options in favor of turning the
-  value into runtime configuration option.
-- Remove `min-index-capacity` from build options in favor of turning the value
-  into runtime configuration option.
+- Stop passing `table-index-threshold` from build options into the library in
+  favor of turning the value into runtime configuration option. The option still
+  exists in `build.zig` for running the benchmark comparisons.
+- Stop passing `min-index-capacity` from build options into the library in favor
+  of turning the value into runtime configuration option. The option still
+  exists in `build.zig` for running the benchmark comparisons.
 
 ### Fixed
 

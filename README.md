@@ -24,6 +24,8 @@ some point in the future are:
 Parse a TOML document with `toml.decode`. Parsing the document decodes it into
 memory as a tree data structure that reflects the document as `toml.Value`. The
 `toml.Table` struct provides helper methods for navigating the parsed structure.
+The value is wrapped in `toml.Parsed` that owns the memory of the tree data
+structure. Once it is no longer needed, the caller must call `parsed.deinit()`.
 
 ### Example
 
