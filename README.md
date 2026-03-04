@@ -95,7 +95,7 @@ _ = toml.decode(gpa, input, .{
 
 Add the library to your `build.zig.zon`:
 
-    zig fetch --save git+https://github.com/anttikivi/toml-zig#v0.1.0
+    zig fetch --save git+https://github.com/anttikivi/toml-zig#v0.2.0
 
 In your `build.zig`, add the library as a module like this:
 
