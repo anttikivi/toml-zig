@@ -25,10 +25,6 @@ jobs:
       BENCHMARKS: tiny,small,medium
       COMPARE_REFS: v0.1.0
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
-          context: ${{ github.workflow }} / ${{ matrix.os }}
       - uses: actions/checkout@v6.0.2
         with:
           fetch-depth: 0

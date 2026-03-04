@@ -10,9 +10,9 @@ A TOML parser library for Zig.
 
 The library currently uses Zig 0.15.2.
 
-See the [roadmap](https://codeberg.org/anttikivi/toml-zig/projects/40223) for
-planned features, changes, and improvements. High-level goals I'd like to
-explore at some point in the future are:
+See the [roadmap](https://github.com/users/anttikivi/projects/12) for planned
+features, changes, and improvements. High-level goals I'd like to explore at
+some point in the future are:
 
 - Improving the performance.
 - Decoding TOML documents directly into user-defined Zig structs.
@@ -60,8 +60,8 @@ behavior:
 - `validate_utf8`: whether to validate input UTF-8 (`true` by default).
 - `diagnostics`: optional pointer to diagnostics output object.
 - `table_hash_index_threshold`: when the number of elements in a TOML table
-  exceeds this threshold, the table switches from linear lookups to hash
-  lookups (`16` by default).
+  exceeds this threshold, the table switches from linear lookups to hash lookups
+  (`16` by default).
 - `min_table_index_capacity`: minimum capacity to reserve for the hash table
   when the number of elements in a TOML table exceed the threshold for switching
   from linear lookups to hash lookups (`16` by default).
@@ -93,7 +93,7 @@ _ = toml.decode(gpa, input, .{
 
 Add the library to your `build.zig.zon`:
 
-    zig fetch --save git+https://codeberg.org/anttikivi/toml-zig#v0.1.0
+    zig fetch --save git+https://github.com/anttikivi/toml-zig#v0.1.0
 
 In your `build.zig`, add the library as a module like this:
 

@@ -5,8 +5,15 @@
 name: ci
 
 on:
+  pull_request:
   push:
+    branches:
+      - main
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -15,9 +22,6 @@ jobs:
   shell:
     runs-on: ubuntu-latest
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - run: shellcheck ./tools/zig.sh
       - run: shellcheck ./tools/download_zig.sh
@@ -32,12 +36,18 @@ jobs:
       - shell: pwsh
         run: Invoke-ScriptAnalyzer -Path tools/download_minisign.ps1 -Severity Error,Warning,Information -EnableExit -ExcludeRule PSUseBOMForUnicodeEncodedFile
 
+  reuse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: "3.14"
+      - run: pipx run reuse lint
+
   aarch64-freebsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - uses: cross-platform-actions/action@v0.32.0
         with:
@@ -49,27 +59,18 @@ jobs:
   aarch64-linux:
     runs-on: ubuntu-22.04-arm
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - run: sh ci/linux.sh
 
   aarch64-macos:
     runs-on: macos-15
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - run: sh ci/aarch64-macos.sh
 
   aarch64-netbsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - uses: cross-platform-actions/action@v0.32.0
         with:
@@ -81,18 +82,12 @@ jobs:
   aarch64-windows:
     runs-on: windows-11-arm
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - run: .\ci\windows.ps1
 
   x86_64-freebsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - uses: cross-platform-actions/action@v0.32.0
         with:
@@ -104,27 +99,18 @@ jobs:
   x86_64-linux:
     runs-on: ubuntu-22.04
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - run: sh ci/linux.sh
 
   x86_64-macos:
     runs-on: macos-15-intel
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - run: sh ci/x86_64-macos.sh
 
   x86_64-netbsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - uses: cross-platform-actions/action@v0.32.0
         with:
@@ -136,8 +122,5 @@ jobs:
   x86_64-windows:
     runs-on: windows-2022
     steps:
-      - uses: anttikivi/forgejo-status@v0.1.2
-        with:
-          token: ${{ secrets.CODEBERG_TOKEN }}
       - uses: actions/checkout@v6.0.2
       - run: .\ci\windows.ps1
