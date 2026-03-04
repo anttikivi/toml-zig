@@ -68,5 +68,5 @@ and this project adheres to
 - Test the project against
   [`toml-test`](https://github.com/toml-lang/toml-test).
 
-[Unreleased]: https://github.org/anttikivi/toml-zig/compare/v0.1.0...HEAD
-[0.1.0]: https://github.org/anttikivi/toml-zig/releases/tag/v0.1.0
+[Unreleased]: https://github.com/anttikivi/toml-zig/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/anttikivi/toml-zig/releases/tag/v0.1.0
