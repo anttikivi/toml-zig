@@ -86,7 +86,7 @@ const Options = struct {
     fn toolOptions(self: Self, b: *std.Build) *std.Build.Step.Options {
         const options = b.addOptions();
 
-        options.addOption([]const u8, "go_path", b.pathJoin(&.{ "tools", ".go" }));
+        options.addOption([]const u8, "go_path", self.go_path);
         options.addOption([]const u8, "toml_test_path", self.toml_test_path);
         options.addOption([]const u8, "toml_test_version", b.fmt("{f}", .{toml_test_version}));
 
@@ -418,7 +418,7 @@ fn addFetchTomlTestStep(b: *std.Build, opts: Options) void {
 }
 
 fn addBenchmarkStep(b: *std.Build, opts: Options) void {
-    const step = b.step("bench", "Run the bechmarks for the current revision");
+    const step = b.step("bench", "Run the benchmarks for the current revision");
     const bench = b.addExecutable(.{
         .name = "benchmark",
         .root_module = b.createModule(.{
