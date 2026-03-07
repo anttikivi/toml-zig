@@ -20,7 +20,7 @@ permissions:
 
 env:
   BENCHMARKS: tiny,small,medium
-  COMPARE_REFS: v0.1.0
+  COMPARE_REFS: v0.2.0
 
 jobs:
   shell:
