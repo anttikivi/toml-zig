@@ -8,7 +8,13 @@ A TOML parser library for Zig.
 - Passes the
   [standard `toml-test` suite](https://github.com/toml-lang/toml-test/).
 
-The library currently uses Zig 0.15.2.
+## Zig version compatibility
+
+- `v0.2.0` is the current stable release and targets Zig `0.15.2`.
+- The `main` branch tracks Zig `0.16` development builds and may change as Zig
+  evolves.
+- If you want a stable dependency, use the latest tagged release instead of
+  `main`.
 
 See the [roadmap](https://github.com/users/anttikivi/projects/12) for planned
 features, changes, and improvements. High-level goals I'd like to explore at
