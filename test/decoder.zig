@@ -5,6 +5,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const fmt = std.fmt;
+const Io = std.Io;
 const json = std.json;
 const test_options = @import("test_options");
 
@@ -12,20 +13,20 @@ const toml = @import("toml");
 
 const Error = Allocator.Error || fmt.BufPrintError || error{ InvalidDatetime, InvalidTomlValue };
 
-pub fn main() void {
-    run() catch {
+pub fn main(init: std.process.Init) void {
+    run(init.gpa, init.io) catch {
         std.process.exit(1);
         unreachable;
     };
 }
 
-fn run() !void {
-    var arena: std.heap.ArenaAllocator = .init(std.heap.page_allocator);
+fn run(gpa: Allocator, io: Io) !void {
+    var arena: std.heap.ArenaAllocator = .init(gpa);
     defer arena.deinit();
     const allocator = arena.allocator();
 
     var stdin_buffer: [4096]u8 = undefined;
-    var stdin_reader = std.fs.File.stdin().readerStreaming(&stdin_buffer);
+    var stdin_reader = std.Io.File.stdin().readerStreaming(io, &stdin_buffer);
     const stdin = &stdin_reader.interface;
 
     const toml_bytes = try stdin.allocRemaining(allocator, .unlimited);
@@ -42,7 +43,7 @@ fn run() !void {
 
     const json_value = try createJsonValue(allocator, .{ .table = parsed.root });
     var stdout_buffer: [4096]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writerStreaming(&stdout_buffer);
+    var stdout_writer = std.Io.File.stdout().writerStreaming(io, &stdout_buffer);
     var stdout = &stdout_writer.interface;
 
     try json.Stringify.value(json_value, .{}, stdout);
