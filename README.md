@@ -16,7 +16,7 @@ A TOML parser library for Zig.
 - If you want a stable dependency, use the latest tagged release instead of
   `main`.
 
-See the [roadmap](https://github.com/users/anttikivi/projects/12) for planned
+See the [roadmap](https://github.com/users/anttikivi/projects/14/) for planned
 features, changes, and improvements. High-level goals I'd like to explore at
 some point in the future are:
 
