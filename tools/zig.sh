@@ -6,7 +6,7 @@
 
 set -eu
 
-ZIG_VERSION="0.15.2"
+ZIG_VERSION="0.16.0-dev.2682+02142a54d"
 
 SCRIPT_DIR="$(CDPATH="" cd -- "$(dirname -- "$0")" && pwd)"
 REPOSITORY_ROOT="$(CDPATH="" cd -- "${SCRIPT_DIR}/.." && pwd)"

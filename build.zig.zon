@@ -2,7 +2,7 @@
     .name = .toml,
     .version = "0.3.0-dev",
     .fingerprint = 0x12c55c53aba28499,
-    .minimum_zig_version = "0.15.2",
+    .minimum_zig_version = "0.16.0-dev.2682+02142a54d",
     .paths = .{
         "build.zig",
         "build.zig.zon",

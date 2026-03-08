@@ -7,7 +7,7 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$ZIG_VERSION = "0.15.2"
+$ZIG_VERSION = "0.16.0-dev.2682+02142a54d"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $RepositoryRoot = Split-Path -Parent $ScriptDir
