@@ -344,7 +344,11 @@ fn findTomlTestProgram(b: *std.Build, toml_test_step: *std.Build.Step, opts: Opt
 
 fn checkTomlTestVersion(b: *std.Build, toml_test_step: *std.Build.Step, opts: Options) void {
     var code: u8 = undefined;
-    const out_untrimmed = b.runAllowFail(&.{ findTomlTestProgram(b, toml_test_step, opts), "version" }, &code, .Ignore) catch |err| {
+    const out_untrimmed = b.runAllowFail(
+        &.{ findTomlTestProgram(b, toml_test_step, opts), "version" },
+        &code,
+        .ignore,
+    ) catch |err| {
         toml_test_step.dependOn(&b.addFail(
             b.fmt(
                 "'toml-test' not found, consider running 'zig build fetch-toml-test' to install it locally\nerror: {t}",
