@@ -7,6 +7,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Io = std.Io;
 const toml = @import("toml");
 
 const bench = @import("bench.zig");
@@ -71,25 +72,11 @@ const MemoryResult = struct {
     peak_live_bytes: u64,
 };
 
-pub fn main() !void {
-    const gpa, const is_debug = gpa: {
-        if (native_os == .wasi) {
-            break :gpa .{ std.heap.wasm_allocator, false };
-        }
-
-        break :gpa switch (builtin.mode) {
-            .Debug, .ReleaseSafe => .{ debug_allocator.allocator(), true },
-            .ReleaseFast, .ReleaseSmall => .{ std.heap.smp_allocator, false },
-        };
-    };
-    defer if (is_debug) {
-        _ = debug_allocator.deinit();
-    };
-
-    var stdout_stream = std.fs.File.stdout().writerStreaming(&stdout_buffer);
+pub fn main(init: std.process.Init) !void {
+    var stdout_stream = Io.File.stdout().writerStreaming(init.io, &stdout_buffer);
     const stdout = &stdout_stream.interface;
 
-    var stderr_stream = std.fs.File.stderr().writerStreaming(&stderr_buffer);
+    var stderr_stream = Io.File.stderr().writerStreaming(init.io, &stderr_buffer);
     const stderr = &stderr_stream.interface;
 
     const output_mode_name = bench_options.output_mode;
@@ -155,23 +142,23 @@ pub fn main() !void {
         try stdout.flush();
     }
 
-    const cwd = std.fs.cwd();
+    const cwd = Io.Dir.cwd();
 
-    var dir = try cwd.openDir(bench_options.data_path, .{});
-    defer dir.close();
+    var dir = try cwd.openDir(init.io, bench_options.data_path, .{});
+    defer dir.close(init.io);
 
     var fixtures: ArrayList([]const u8) = .empty;
     defer {
         for (fixtures.items) |item| {
-            gpa.free(item);
+            init.gpa.free(item);
         }
-        fixtures.deinit(gpa);
+        fixtures.deinit(init.gpa);
     }
 
     for (bench_options.benchmarks) |fixture| {
         if (std.meta.stringToEnum(Size, fixture)) |_| {
             for (std.meta.fieldNames(Pattern)) |pattern| {
-                const full_fixture = try std.mem.concat(gpa, u8, &.{ fixture, "-", pattern });
+                const full_fixture = try std.mem.concat(init.gpa, u8, &.{ fixture, "-", pattern });
 
                 for (fixtures.items) |f| {
                     if (std.mem.eql(u8, f, full_fixture)) {
@@ -181,10 +168,10 @@ pub fn main() !void {
                     }
                 }
 
-                try fixtures.append(gpa, full_fixture);
+                try fixtures.append(init.gpa, full_fixture);
             }
         } else {
-            const full_fixture = try gpa.dupe(u8, fixture);
+            const full_fixture = try init.gpa.dupe(u8, fixture);
 
             for (fixtures.items) |f| {
                 if (std.mem.eql(u8, f, full_fixture)) {
@@ -194,12 +181,12 @@ pub fn main() !void {
                 }
             }
 
-            try fixtures.append(gpa, full_fixture);
+            try fixtures.append(init.gpa, full_fixture);
         }
     }
 
     var all_results: ArrayList(bench.Result) = .empty;
-    defer all_results.deinit(gpa);
+    defer all_results.deinit(init.gpa);
 
     for (fixtures.items) |fixture| {
         if (output_mode == .full) {
@@ -219,17 +206,17 @@ pub fn main() !void {
         );
 
         const filename = try if (bench_options.random_bench) std.fmt.allocPrint(
-            gpa,
+            init.gpa,
             "{s}-0x{x}.toml",
             .{ fixture, bench_options.bench_seed },
         ) else std.fmt.allocPrint(
-            gpa,
+            init.gpa,
             "{s}-static.toml",
             .{fixture},
         );
-        defer gpa.free(filename);
+        defer init.gpa.free(filename);
 
-        var file = dir.openFile(filename, .{}) catch |err| {
+        var file = dir.openFile(init.io, filename, .{}) catch |err| {
             switch (err) {
                 error.FileNotFound => {
                     try stderr.print("benchmark data for '{s}' is not generated\n", .{std.mem.trimEnd(
@@ -243,21 +230,21 @@ pub fn main() !void {
             }
             return err;
         };
-        defer file.close();
+        defer file.close(init.io);
 
         var buf: [4096]u8 = undefined;
-        var file_stream = file.readerStreaming(&buf);
+        var file_stream = file.readerStreaming(init.io, &buf);
         var reader = &file_stream.interface;
 
-        const data = try reader.allocRemaining(gpa, .unlimited);
-        defer gpa.free(data);
+        const data = try reader.allocRemaining(init.gpa, .unlimited);
+        defer init.gpa.free(data);
 
         if (output_mode == .full) {
             try stdout.print(" ({d} bytes)\n", .{data.len});
         }
 
         var fixture_results: ArrayList(bench.Result) = .empty;
-        defer fixture_results.deinit(gpa);
+        defer fixture_results.deinit(init.gpa);
 
         const config: Config = switch (size) {
             .tiny => .{
@@ -293,9 +280,9 @@ pub fn main() !void {
         };
 
         for (index_configs[0..index_config_len]) |index_config| {
-            const result = run(gpa, fixture, data, config, index_config);
+            const result = run(init.gpa, init.io, fixture, data, config, index_config);
 
-            try fixture_results.append(gpa, result);
+            try fixture_results.append(init.gpa, result);
 
             if (output_mode == .full) {
                 try stdout.print("{f}\n", .{result});
@@ -305,11 +292,11 @@ pub fn main() !void {
 
         switch (output_mode) {
             .summary => {
-                try printFixtureSummary(gpa, stdout, fixture_results.items, top_n, rank_by, max_regression_pct);
+                try printFixtureSummary(init.gpa, stdout, fixture_results.items, top_n, rank_by, max_regression_pct);
                 try stdout.flush();
             },
             .json => {
-                try all_results.appendSlice(gpa, fixture_results.items);
+                try all_results.appendSlice(init.gpa, fixture_results.items);
             },
             .full => {},
         }
@@ -323,7 +310,7 @@ pub fn main() !void {
 
 fn printFixtureSummary(
     gpa: Allocator,
-    stdout: *std.Io.Writer,
+    stdout: *Io.Writer,
     results: []const bench.Result,
     top_n: usize,
     rank_by: RankBy,
@@ -358,7 +345,7 @@ fn printFixtureSummary(
         .{
             best_parse.min_table_index_capacity,
             best_parse.table_hash_index_threshold,
-            std.mem.trimRight(u8, &bench.formatTime(best_parse.median_ns), " "),
+            std.mem.trimEnd(u8, &bench.formatTime(best_parse.median_ns), " "),
         },
     );
     try stdout.print(
@@ -488,6 +475,7 @@ fn balancedScore(ctx: BalancedCtx, r: bench.Result) f64 {
 
 fn run(
     gpa: Allocator,
+    io: Io,
     fixture: []const u8,
     data: []const u8,
     bench_config: Config,
@@ -497,14 +485,14 @@ fn run(
     defer times.deinit(gpa);
 
     for (0..bench_config.warmup_iterations) |_| {
-        _ = benchDecodeTiming(gpa, data, index_config) catch |err| std.debug.panic("warmup failed: {t}", .{err});
+        _ = benchDecodeTiming(gpa, io, data, index_config) catch |err| std.debug.panic("warmup failed: {t}", .{err});
     }
 
     var ns: u64 = 0;
     var iter: usize = 0;
 
     while (iter < bench_config.min_iter or (ns < bench_config.min_ns and iter < bench_config.max_iter)) : (iter += 1) {
-        const result = benchDecodeTiming(gpa, data, index_config) catch |err| std.debug.panic(
+        const result = benchDecodeTiming(gpa, io, data, index_config) catch |err| std.debug.panic(
             "benchmark failed: {t}",
             .{err},
         );
@@ -539,7 +527,7 @@ fn run(
         "benchmark failed: {t}",
         .{err},
     );
-    const lookup_result = runTableAccessBench(gpa, data, bench_config, index_config) catch |err| std.debug.panic(
+    const lookup_result = runTableAccessBench(gpa, io, data, bench_config, index_config) catch |err| std.debug.panic(
         "lookup benchmark failed: {t}",
         .{err},
     );
@@ -591,8 +579,8 @@ fn run(
     };
 }
 
-fn benchDecodeTiming(gpa: Allocator, data: []const u8, index_config: IndexConfig) !u64 {
-    var timer = try std.time.Timer.start();
+fn benchDecodeTiming(gpa: Allocator, io: Io, data: []const u8, index_config: IndexConfig) !u64 {
+    const start = Io.Clock.awake.now(io);
 
     var parsed = blk: {
         if (@hasDecl(toml, "DecodeOptions")) {
@@ -611,7 +599,7 @@ fn benchDecodeTiming(gpa: Allocator, data: []const u8, index_config: IndexConfig
     };
     defer parsed.deinit();
 
-    return timer.read();
+    return @intCast(start.untilNow(io, .awake).toNanoseconds());
 }
 
 fn benchDecodeTracking(tracker: *TrackingAllocator, data: []const u8, index_config: IndexConfig) !MemoryResult {
@@ -643,7 +631,13 @@ fn benchDecodeTracking(tracker: *TrackingAllocator, data: []const u8, index_conf
     };
 }
 
-fn runTableAccessBench(gpa: Allocator, data: []const u8, config: Config, index_config: IndexConfig) !LookupResult {
+fn runTableAccessBench(
+    gpa: Allocator,
+    io: Io,
+    data: []const u8,
+    config: Config,
+    index_config: IndexConfig,
+) !LookupResult {
     var parsed = blk: {
         if (@hasDecl(toml, "DecodeOptions")) {
             const DecodeOptions = toml.DecodeOptions;
@@ -675,7 +669,7 @@ fn runTableAccessBench(gpa: Allocator, data: []const u8, config: Config, index_c
     var ns: u64 = 0;
     var iter: usize = 0;
     while (iter < config.min_iter or (ns < config.min_ns and iter < config.max_iter)) : (iter += 1) {
-        var timer = try std.time.Timer.start();
+        const start = Io.Clock.awake.now(io);
         var pass: AccessPassResult = .{};
         for (0..config.lookup_passes_per_sample) |_| {
             const one_pass = runAccessPass(&parsed.root);
@@ -689,7 +683,7 @@ fn runTableAccessBench(gpa: Allocator, data: []const u8, config: Config, index_c
             return error.InvalidBenchmarkResult;
         }
 
-        const elapsed = timer.read();
+        const elapsed: u64 = @intCast(start.untilNow(io, .awake).toNanoseconds());
         try times.append(gpa, elapsed);
         ns += elapsed;
     }

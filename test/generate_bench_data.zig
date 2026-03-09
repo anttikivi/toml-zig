@@ -6,6 +6,7 @@ const bench_options = @import("bench_options");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Io = std.Io;
 
 const Pattern = @import("bench_data.zig").Pattern;
 const Size = @import("bench_data.zig").Size;
@@ -20,30 +21,27 @@ fn effectiveMaxNesting() usize {
     return @max(@as(usize, 1), @as(usize, bench_options.max_nesting));
 }
 
-pub fn main() !void {
-    const gpa = debug_allocator.allocator();
-    defer _ = debug_allocator.deinit();
-
-    var stderr_stream = std.fs.File.stderr().writerStreaming(&stderr_buffer);
+pub fn main(init: std.process.Init) !void {
+    var stderr_stream = Io.File.stderr().writerStreaming(init.io, &stderr_buffer);
     const stderr = &stderr_stream.interface;
 
-    const cwd = std.fs.cwd();
+    const cwd = Io.Dir.cwd();
 
-    var dir = try cwd.makeOpenPath(bench_options.data_path, .{});
-    defer dir.close();
+    var dir = try cwd.createDirPathOpen(init.io, bench_options.data_path, .{});
+    defer dir.close(init.io);
 
     var fixtures: ArrayList([]const u8) = .empty;
     defer {
         for (fixtures.items) |item| {
-            gpa.free(item);
+            init.gpa.free(item);
         }
-        fixtures.deinit(gpa);
+        fixtures.deinit(init.gpa);
     }
 
     for (bench_options.benchmarks) |fixture| {
         if (std.meta.stringToEnum(Size, fixture)) |_| {
             for (std.meta.fieldNames(Pattern)) |pattern| {
-                const full_fixture = try std.mem.concat(gpa, u8, &.{ fixture, "-", pattern });
+                const full_fixture = try std.mem.concat(init.gpa, u8, &.{ fixture, "-", pattern });
 
                 for (fixtures.items) |f| {
                     if (std.mem.eql(u8, f, full_fixture)) {
@@ -53,10 +51,10 @@ pub fn main() !void {
                     }
                 }
 
-                try fixtures.append(gpa, full_fixture);
+                try fixtures.append(init.gpa, full_fixture);
             }
         } else {
-            const full_fixture = try gpa.dupe(u8, fixture);
+            const full_fixture = try init.gpa.dupe(u8, fixture);
 
             for (fixtures.items) |f| {
                 if (std.mem.eql(u8, f, full_fixture)) {
@@ -66,7 +64,7 @@ pub fn main() !void {
                 }
             }
 
-            try fixtures.append(gpa, full_fixture);
+            try fixtures.append(init.gpa, full_fixture);
         }
     }
 
@@ -90,7 +88,7 @@ pub fn main() !void {
         var prng = std.Random.DefaultPrng.init(bench_options.bench_seed);
         const rand = prng.random();
 
-        var arena_allocator: std.heap.ArenaAllocator = .init(gpa);
+        var arena_allocator: std.heap.ArenaAllocator = .init(init.gpa);
         defer arena_allocator.deinit();
         const arena = arena_allocator.allocator();
 
@@ -111,26 +109,26 @@ pub fn main() !void {
         };
 
         const filename = try if (bench_options.random_bench) std.fmt.allocPrint(
-            gpa,
+            init.gpa,
             "{s}-0x{x}.toml",
             .{ fixture, bench_options.bench_seed },
         ) else std.fmt.allocPrint(
-            gpa,
+            init.gpa,
             "{s}-static.toml",
             .{fixture},
         );
-        defer gpa.free(filename);
+        defer init.gpa.free(filename);
 
-        var file = try dir.createFile(filename, .{ .truncate = true });
-        defer file.close();
+        var file = try dir.createFile(init.io, filename, .{ .truncate = true });
+        defer file.close(init.io);
 
         var buf: [1024]u8 = undefined;
-        var writer = file.writer(&buf);
+        var writer = file.writer(init.io, &buf);
         try writer.interface.writeAll(data);
         try writer.interface.flush();
 
-        const full_path = try std.fs.path.join(gpa, &.{ bench_options.data_path, filename });
-        defer gpa.free(full_path);
+        const full_path = try std.fs.path.join(init.gpa, &.{ bench_options.data_path, filename });
+        defer init.gpa.free(full_path);
 
         try stderr.print("wrote {d} bytes to {s}\n", .{ data.len, full_path });
         try stderr.flush();

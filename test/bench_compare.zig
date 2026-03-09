@@ -6,6 +6,7 @@ const bench_options = @import("bench_options");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Io = std.Io;
 
 const bench = @import("bench.zig");
 const formatTime = bench.formatTime;
@@ -22,24 +23,21 @@ const RevisionResults = struct {
 const MetricKind = enum { u64_metric, f64_metric };
 
 const MakeTempDirResult = struct {
-    dir: std.fs.Dir,
+    dir: Io.Dir,
     name: []const u8,
 
-    pub fn deinit(self: *@This(), gpa: Allocator, dir: std.fs.Dir) void {
-        self.dir.close();
-        dir.deleteTree(self.name) catch @panic("failed to delete temporary directory");
+    pub fn deinit(self: *@This(), gpa: Allocator, io: Io, dir: Io.Dir) void {
+        self.dir.close(io);
+        dir.deleteTree(io, self.name) catch @panic("failed to delete temporary directory");
         gpa.free(self.name);
     }
 };
 
-pub fn main() !void {
-    const gpa = debug_allocator.allocator();
-    defer _ = debug_allocator.deinit();
-
-    var stdout_stream = std.fs.File.stdout().writerStreaming(&stdout_buffer);
+pub fn main(init: std.process.Init) !void {
+    var stdout_stream = Io.File.stdout().writerStreaming(init.io, &stdout_buffer);
     const stdout = &stdout_stream.interface;
 
-    var stderr_stream = std.fs.File.stderr().writerStreaming(&stderr_buffer);
+    var stderr_stream = Io.File.stderr().writerStreaming(init.io, &stderr_buffer);
     const stderr = &stderr_stream.interface;
 
     const zig_exe = bench_options.zig_exe;
@@ -52,23 +50,23 @@ pub fn main() !void {
     try stderr.flush();
 
     const head_json = runBench(
-        gpa,
+        init.gpa,
+        init.io,
         zig_exe,
         benchmarks,
         default_min_table_index_capacity,
         default_table_hash_index_threshold,
         null,
-        stderr,
     ) catch |err| {
         try stderr.print("failed to run benchmarks for HEAD: {t}\n", .{err});
         try stderr.flush();
         return err;
     };
-    defer gpa.free(head_json);
+    defer init.gpa.free(head_json);
 
     const head_parsed = std.json.parseFromSlice(
         []bench.Result,
-        gpa,
+        init.gpa,
         head_json,
         .{ .allocate = .alloc_always },
     ) catch |err| {
@@ -79,9 +77,9 @@ pub fn main() !void {
     defer head_parsed.deinit();
 
     var all_revisions: ArrayList(RevisionResults) = .empty;
-    defer all_revisions.deinit(gpa);
+    defer all_revisions.deinit(init.gpa);
 
-    try all_revisions.append(gpa, .{
+    try all_revisions.append(init.gpa, .{
         .label = "HEAD",
         .results = head_parsed.value,
     });
@@ -91,89 +89,86 @@ pub fn main() !void {
         for (parsed_results.items) |*p| {
             p.deinit();
         }
-        parsed_results.deinit(gpa);
+        parsed_results.deinit(init.gpa);
     }
 
     for (compare_refs) |ref| {
         try stderr.print("benchmarking {s}...\n", .{ref});
         try stderr.flush();
 
-        const tmp_dir_name_part = try std.mem.concat(gpa, u8, &.{ ".tmp-bench-", ref });
-        defer gpa.free(tmp_dir_name_part);
-        var tmp_dir = try makeTempDir(gpa, std.fs.cwd(), tmp_dir_name_part);
-        defer tmp_dir.deinit(gpa, std.fs.cwd());
+        const tmp_dir_name_part = try std.mem.concat(init.gpa, u8, &.{ ".tmp-bench-", ref });
+        defer init.gpa.free(tmp_dir_name_part);
+        var tmp_dir = try makeTempDir(init.gpa, init.io, Io.Dir.cwd(), tmp_dir_name_part);
+        defer tmp_dir.deinit(init.gpa, init.io, Io.Dir.cwd());
 
-        var cwd = try std.fs.cwd().openDir(".", .{ .iterate = true });
-        defer cwd.close();
+        var cwd = try Io.Dir.cwd().openDir(init.io, ".", .{ .iterate = true });
+        defer cwd.close(init.io);
 
-        var git_walker = try cwd.walk(gpa);
+        var git_walker = try cwd.walk(init.gpa);
         defer git_walker.deinit();
 
-        while (try git_walker.next()) |entry| {
+        while (try git_walker.next(init.io)) |entry| {
             if (!std.mem.startsWith(u8, entry.path, ".git")) {
                 continue;
             }
 
             switch (entry.kind) {
-                .file => try entry.dir.copyFile(entry.basename, tmp_dir.dir, entry.path, .{}),
-                .directory => try tmp_dir.dir.makeDir(entry.path),
+                .file => try entry.dir.copyFile(entry.basename, tmp_dir.dir, entry.path, init.io, .{}),
+                .directory => try tmp_dir.dir.createDir(init.io, entry.path, .default_dir),
                 else => return error.UnexpectedEntryKind,
             }
         }
 
-        var result = execCmd(gpa, &.{ "git", "rev-parse", "--verify", ref }, null, stderr) catch |err| {
+        runIgnoreResult(init.io, &.{ "git", "rev-parse", "--verify", ref }, null) catch |err| {
             try stderr.print("warning: ref '{s}' not found, skipping: {t}\n", .{ ref, err });
             try stderr.flush();
             continue;
         };
-        gpa.free(result);
-        result = execCmd(gpa, &.{ "git", "reset", "--hard", ref }, tmp_dir.name, stderr) catch |err| {
+        runIgnoreResult(init.io, &.{ "git", "reset", "--hard", ref }, tmp_dir.name) catch |err| {
             try stderr.print("warning: failed to reset to '{s}': {t}\n", .{ ref, err });
             try stderr.flush();
             continue;
         };
-        gpa.free(result);
-        result = execCmd(gpa, &.{ "git", "clean", "-fd" }, tmp_dir.name, stderr) catch |err| {
+        runIgnoreResult(init.io, &.{ "git", "clean", "-fd" }, tmp_dir.name) catch |err| {
             try stderr.print("warning: failed to clean '{s}': {t}\n", .{ tmp_dir.name, err });
             try stderr.flush();
             continue;
         };
-        gpa.free(result);
 
-        try tmp_dir.dir.deleteFile("build.zig");
-        try tmp_dir.dir.deleteFile("build.zig.zon");
-        try tmp_dir.dir.deleteTree("test");
+        try tmp_dir.dir.deleteFile(init.io, "build.zig");
+        try tmp_dir.dir.deleteFile(init.io, "build.zig.zon");
+        try tmp_dir.dir.deleteTree(init.io, "test");
 
-        var bench_walker = try cwd.walk(gpa);
+        var bench_walker = try cwd.walk(init.gpa);
         defer bench_walker.deinit();
-        while (try bench_walker.next()) |entry| {
+        while (try bench_walker.next(init.io)) |entry| {
             if (!std.mem.startsWith(u8, entry.path, "test") and !std.mem.startsWith(u8, entry.path, "build.zig")) {
                 continue;
             }
 
             switch (entry.kind) {
-                .file => try entry.dir.copyFile(entry.basename, tmp_dir.dir, entry.path, .{}),
-                .directory => try tmp_dir.dir.makeDir(entry.path),
+                .file => try entry.dir.copyFile(entry.basename, tmp_dir.dir, entry.path, init.io, .{}),
+                .directory => try tmp_dir.dir.createDir(init.io, entry.path, .default_dir),
                 else => return error.UnexpectedEntryKind,
             }
         }
 
         const ref_json = runBench(
-            gpa,
+            init.gpa,
+            init.io,
             zig_exe,
             benchmarks,
             default_min_table_index_capacity,
             default_table_hash_index_threshold,
             tmp_dir.name,
-            stderr,
         ) catch |err| {
             try stderr.print("failed to run benchmarks for '{s}': {t}\n", .{ ref, err });
             try stderr.flush();
             continue;
         };
-        defer gpa.free(ref_json);
+        defer init.gpa.free(ref_json);
 
-        const ref_parsed = std.json.parseFromSlice([]bench.Result, gpa, ref_json, .{
+        const ref_parsed = std.json.parseFromSlice([]bench.Result, init.gpa, ref_json, .{
             .allocate = .alloc_always,
         }) catch |err| {
             try stderr.print("failed to parse results for '{s}': {t}\n", .{ ref, err });
@@ -181,67 +176,49 @@ pub fn main() !void {
             continue;
         };
 
-        try parsed_results.append(gpa, ref_parsed);
+        try parsed_results.append(init.gpa, ref_parsed);
 
-        try all_revisions.append(gpa, .{
+        try all_revisions.append(init.gpa, .{
             .label = ref,
             .results = ref_parsed.value,
         });
     }
 
-    try printComparison(gpa, stdout, all_revisions.items);
+    try printComparison(init.gpa, stdout, all_revisions.items);
     try stdout.flush();
 }
 
-fn execCmd(gpa: Allocator, argv: []const []const u8, cwd: ?[]const u8, stderr: *std.Io.Writer) ![]const u8 {
-    var child: std.process.Child = .init(argv, gpa);
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
+fn runIgnoreResult(io: Io, argv: []const []const u8, cwd: ?[]const u8) !void {
+    var child = try std.process.spawn(io, .{
+        .argv = argv,
+        .cwd = if (cwd) |d| .{ .path = d } else .inherit,
+    });
 
-    if (cwd) |d| {
-        child.cwd = d;
-    }
-
-    try child.spawn();
-
-    var child_stdout: ArrayList(u8) = .empty;
-    defer child_stdout.deinit(gpa);
-    var child_stderr: ArrayList(u8) = .empty;
-    defer child_stderr.deinit(gpa);
-
-    child.collectOutput(gpa, &child_stdout, &child_stderr, 10 * 1024 * 1024) catch |err| {
-        try stderr.writeAll(child_stderr.items);
-        try stderr.flush();
-        return err;
-    };
-
-    const term = try child.wait();
+    const term = try child.wait(io);
     switch (term) {
-        .Exited => |code| {
+        .exited => |code| {
             if (code != 0) {
-                try stderr.writeAll(child_stderr.items);
-                try stderr.flush();
+                // try stderr.writeAll(child_stderr.items);
+                // try stderr.flush();
                 return error.CommandFailed;
             }
         },
         else => {
-            try stderr.writeAll(child_stderr.items);
-            try stderr.flush();
+            // try stderr.writeAll(child_stderr.items);
+            // try stderr.flush();
             return error.CommandFailed;
         },
     }
-
-    return child_stdout.toOwnedSlice(gpa);
 }
 
 fn runBench(
     gpa: Allocator,
+    io: Io,
     zig_exe: []const u8,
     benchmarks: []const u8,
     default_min_table_index_capacity: u32,
     default_table_hash_index_threshold: u32,
     cwd: ?[]const u8,
-    stderr: *std.Io.Writer,
 ) ![]const u8 {
     const benchmarks_arg = try std.fmt.allocPrint(gpa, "-Dbenchmarks={s}", .{benchmarks});
     defer gpa.free(benchmarks_arg);
@@ -258,17 +235,22 @@ fn runBench(
     );
     defer gpa.free(default_table_hash_index_threshold_arg);
 
-    return execCmd(gpa, &.{
-        zig_exe,
-        "build",
-        "bench",
-        benchmarks_arg,
-        "-Doptimize=ReleaseFast",
-        "-Dbench-json=true",
-        "-Dbench-sweep-index-configs=false",
-        default_min_table_index_capacity_arg,
-        default_table_hash_index_threshold_arg,
-    }, cwd, stderr);
+    const run_result = try std.process.run(gpa, io, .{
+        .argv = &.{
+            zig_exe,
+            "build",
+            "bench",
+            benchmarks_arg,
+            "-Doptimize=ReleaseFast",
+            "-Dbench-json=true",
+            "-Dbench-sweep-index-configs=false",
+            default_min_table_index_capacity_arg,
+            default_table_hash_index_threshold_arg,
+        },
+        .cwd = if (cwd) |d| .{ .path = d } else .inherit,
+    });
+
+    return run_result.stdout;
 }
 
 fn printComparison(gpa: Allocator, stdout: *std.Io.Writer, revisions: []const RevisionResults) !void {
@@ -402,7 +384,7 @@ fn printComparison(gpa: Allocator, stdout: *std.Io.Writer, revisions: []const Re
 
                         if (is_time) {
                             const t = formatTime(@intFromFloat(val_f));
-                            try printCellRight(stdout, std.mem.trimRight(u8, &t, " "), value_col_width);
+                            try printCellRight(stdout, std.mem.trimEnd(u8, &t, " "), value_col_width);
                         } else {
                             var abs_buf: [48]u8 = undefined;
                             const abs_text = std.fmt.bufPrint(&abs_buf, "{d:.0}{s}", .{ val_f, metric.unit }) catch "?";
@@ -531,8 +513,10 @@ fn getMetricF64(r: bench.Result, kind: MetricKind, idx: usize) f64 {
     };
 }
 
-fn makeTempDir(gpa: Allocator, dir: std.fs.Dir, name: []const u8) !MakeTempDirResult {
-    const rand_int = std.crypto.random.int(u64);
+fn makeTempDir(gpa: Allocator, io: Io, dir: Io.Dir, name: []const u8) !MakeTempDirResult {
+    const rand_src: std.Random.IoSource = .{ .io = io };
+    const rand = rand_src.interface();
+    const rand_int = rand.int(u64);
     const dir_name = try std.mem.concat(gpa, u8, &.{ name, ".", &std.fmt.hex(rand_int) });
-    return .{ .dir = try dir.makeOpenPath(dir_name, .{}), .name = dir_name };
+    return .{ .dir = try dir.createDirPathOpen(io, dir_name, .{}), .name = dir_name };
 }
