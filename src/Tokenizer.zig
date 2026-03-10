@@ -17,8 +17,20 @@ diagnostics: ?*Diagnostics = null,
 const Error = Diagnostics.Error || error.NotImplemented || error{ InvalidControlCharacter, InvalidUtf8 };
 
 const TokenType = enum {
-    newline,
     comment,
+
+    dot,
+    equal,
+    comma,
+    left_bracket,
+    right_bracket,
+    double_left_bracket,
+    double_right_bracket,
+    left_brace,
+    right_brace,
+
+    newline,
+
     end_of_file,
 };
 
@@ -116,6 +128,25 @@ pub fn next(self: *Tokenizer) !Token {
                 }
             }
         },
+        '.' => return .{ .type = .dot, .start = start, .end = self.pos },
+        '=' => return .{ .type = .equal, .start = start, .end = self.pos },
+        ',' => return .{ .type = .comma, .start = start, .end = self.pos },
+        '[' => {
+            if (self.pos < self.input.len and self.input[self.pos] == '[') {
+                self.pos += 1;
+                return .{ .type = .double_left_bracket, .start = start, .end = self.pos };
+            }
+            return .{ .type = .left_bracket, .start = start, .end = self.pos };
+        },
+        ']' => {
+            if (self.pos < self.input.len and self.input[self.pos] == ']') {
+                self.pos += 1;
+                return .{ .type = .double_right_bracket, .start = start, .end = self.pos };
+            }
+            return .{ .type = .right_bracket, .start = start, .end = self.pos };
+        },
+        '{' => return .{ .type = .left_brace, .start = start, .end = self.pos },
+        '}' => return .{ .type = .right_brace, .start = start, .end = self.pos },
         else => return error.NotImplemented,
     }
 }
