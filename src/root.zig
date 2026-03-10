@@ -10,6 +10,9 @@ pub const Diagnostics = @import("Diagnostics.zig");
 pub const Parser = @import("Parser.zig");
 pub const Tokenizer = @import("Tokenizer.zig");
 
+/// The default TOML version used by the library.
+pub const default_version: Version = .@"1.1.0";
+
 /// TOML versions that this parser supports.
 pub const Version = enum {
     @"1.1.0",
