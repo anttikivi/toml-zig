@@ -24,6 +24,7 @@ const Options = struct {
     local_toml_test_path: []const u8,
     toml_test_exe_name: []const u8,
     local_toml_test_exe: []const u8,
+    force_toml_test_from_source: bool,
     go_path: []const u8,
 
     fmt_paths: []const []const u8,
@@ -102,6 +103,7 @@ const Options = struct {
         options.addOption([]const u8, "local_toml_test_path", self.local_toml_test_path);
         options.addOption([]const u8, "toml_test_exe_name", self.toml_test_exe_name);
         options.addOption([]const u8, "local_toml_test_exe", self.local_toml_test_exe);
+        options.addOption(bool, "force_toml_test_from_source", self.force_toml_test_from_source);
         options.addOption([]const u8, "toml_test_version", b.fmt("{f}", .{toml_test_version}));
 
         return options;
@@ -147,6 +149,11 @@ pub fn build(b: *std.Build) void {
         .local_toml_test_path = local_toml_test_path,
         .toml_test_exe_name = toml_test_exe_name,
         .local_toml_test_exe = local_toml_test_exe,
+        .force_toml_test_from_source = b.option(
+            bool,
+            "force-toml-test-from-source",
+            "Forces building 'toml-test' from source even if there is a prebuild binary available",
+        ) orelse false,
         .go_path = b.pathJoin(&.{ "tools", ".go" }),
         .fmt_paths = &.{"."},
         .benchmarks = blk: {

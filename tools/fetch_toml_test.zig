@@ -87,7 +87,7 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
-    if (hasPrebuilt()) {
+    if (!tool_options.force_toml_test_from_source and hasPrebuilt()) {
         try installPrebuilt(init.gpa, init.io);
     } else {
         try installSource(init.gpa, init.io, init.environ_map);
