@@ -221,7 +221,7 @@ pub fn build(b: *std.Build) void {
             bool,
             "bench-sweep-index-configs",
             "Benchmark all index config combinations instead of only the default config",
-        ) orelse true,
+        ) orelse false,
         .compare_refs = blk: {
             const compare_refs = b.option(
                 []const u8,
