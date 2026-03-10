@@ -6,14 +6,7 @@ const std = @import("std");
 
 pub const decode = @import("decoder.zig").decode;
 pub const DecodeOptions = @import("decoder.zig").DecodeOptions;
-pub const Diagnostics = @import("decoder.zig").Diagnostics;
 pub const Parsed = @import("decoder.zig").Parsed;
-pub const Array = @import("value.zig").Array;
-pub const Date = @import("value.zig").Date;
-pub const Datetime = @import("value.zig").Datetime;
-pub const Table = @import("value.zig").Table;
-pub const Time = @import("value.zig").Time;
-pub const Value = @import("value.zig").Value;
 
 /// TOML versions that this parser supports.
 pub const Version = enum {
