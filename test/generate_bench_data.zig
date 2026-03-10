@@ -127,7 +127,7 @@ pub fn main(init: std.process.Init) !void {
         try writer.interface.writeAll(data);
         try writer.interface.flush();
 
-        const full_path = try std.fs.path.join(init.gpa, &.{ bench_options.data_path, filename });
+        const full_path = try Io.Dir.path.join(init.gpa, &.{ bench_options.data_path, filename });
         defer init.gpa.free(full_path);
 
         try stderr.print("wrote {d} bytes to {s}\n", .{ data.len, full_path });
