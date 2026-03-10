@@ -102,7 +102,7 @@ fn getOrInstallExecutable(gpa: Allocator, io: Io) ![]const u8 {
         return exe_path;
     }
 
-    if (hasCorrectVersion(gpa, io, system_go) catch false) {
+    if (!tool_options.force_local_tools and hasCorrectVersion(gpa, io, system_go) catch false) {
         return system_go;
     }
 
