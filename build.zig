@@ -18,8 +18,12 @@ const Options = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 
+    force_local_tools: bool,
+
     toml_test_timeout: []const u8,
-    toml_test_path: []const u8,
+    local_toml_test_path: []const u8,
+    toml_test_exe_name: []const u8,
+    local_toml_test_exe: []const u8,
     go_path: []const u8,
 
     fmt_paths: []const []const u8,
@@ -93,8 +97,11 @@ const Options = struct {
     fn toolOptions(self: Self, b: *std.Build) *std.Build.Step.Options {
         const options = b.addOptions();
 
+        options.addOption(bool, "force_local_tools", self.force_local_tools);
         options.addOption([]const u8, "go_path", self.go_path);
-        options.addOption([]const u8, "toml_test_path", self.toml_test_path);
+        options.addOption([]const u8, "local_toml_test_path", self.local_toml_test_path);
+        options.addOption([]const u8, "toml_test_exe_name", self.toml_test_exe_name);
+        options.addOption([]const u8, "local_toml_test_exe", self.local_toml_test_exe);
         options.addOption([]const u8, "toml_test_version", b.fmt("{f}", .{toml_test_version}));
 
         return options;
@@ -111,9 +118,24 @@ const Options = struct {
 };
 
 pub fn build(b: *std.Build) void {
+    const local_toml_test_path = b.pathJoin(&.{ "vendor", "toml-test" });
+    const toml_test_exe_name = blk: {
+        if (b.graph.host.result.os.tag == .windows) {
+            break :blk "toml-test.exe";
+        } else {
+            break :blk "toml-test";
+        }
+    };
+    const local_toml_test_exe = b.pathJoin(&.{ local_toml_test_path, toml_test_exe_name });
+
     var options: Options = .{
         .optimize = b.standardOptimizeOption(.{}),
         .target = b.standardTargetOptions(.{}),
+        .force_local_tools = b.option(
+            bool,
+            "force-local-tools",
+            "Force the scripts to use locally installed tools instead of ones found on the system",
+        ) orelse false,
         .toml_test_timeout = b.option(
             []const u8,
             "toml-test-timeout",
@@ -122,7 +144,9 @@ pub fn build(b: *std.Build) void {
                 .{default_toml_test_timeout},
             ),
         ) orelse default_toml_test_timeout,
-        .toml_test_path = b.pathJoin(&.{ "vendor", "toml-test" }),
+        .local_toml_test_path = local_toml_test_path,
+        .toml_test_exe_name = toml_test_exe_name,
+        .local_toml_test_exe = local_toml_test_exe,
         .go_path = b.pathJoin(&.{ "tools", ".go" }),
         .fmt_paths = &.{"."},
         .benchmarks = blk: {
@@ -332,7 +356,44 @@ fn addTestTomlStep(b: *std.Build, test_step: *std.Build.Step, opts: Options) voi
 }
 
 fn findTomlTestProgram(b: *std.Build, toml_test_step: *std.Build.Step, opts: Options) []const u8 {
-    return b.findProgram(&.{"toml-test"}, &.{opts.toml_test_path}) catch |err| switch (err) {
+    if (opts.force_local_tools) {
+        b.build_root.handle.access(b.graph.io, opts.local_toml_test_exe, .{}) catch |err| switch (err) {
+            error.AccessDenied, error.PermissionDenied, error.FileNotFound => {
+                toml_test_step.dependOn(&b.addFail(
+                    b.fmt(
+                        "'toml-test' not found at {s}, consider running 'zig build fetch-toml-test' to install it",
+                        .{opts.local_toml_test_exe},
+                    ),
+                ).step);
+                return "";
+            },
+            else => {
+                toml_test_step.dependOn(&b.addFail(
+                    b.fmt(
+                        "unknown error while trying to access 'toml-test' at {s}: {t}",
+                        .{ opts.local_toml_test_exe, err },
+                    ),
+                ).step);
+                return "";
+            },
+        };
+        return b.build_root.handle.realPathFileAlloc(b.graph.io, opts.local_toml_test_exe, b.allocator) catch |err| {
+            switch (err) {
+                error.OutOfMemory => @panic("OOM"),
+                else => {
+                    toml_test_step.dependOn(&b.addFail(
+                        b.fmt(
+                            "error while trying to obtain realpath for 'toml-test' at {s}: {t}",
+                            .{ opts.local_toml_test_exe, err },
+                        ),
+                    ).step);
+                    return "";
+                },
+            }
+        };
+    }
+
+    return b.findProgram(&.{"toml-test"}, &.{opts.local_toml_test_path}) catch |err| switch (err) {
         error.FileNotFound => {
             toml_test_step.dependOn(&b.addFail(
                 "'toml-test' not found, consider running 'zig build fetch-toml-test' to install it locally",
