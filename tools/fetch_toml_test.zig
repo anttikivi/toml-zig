@@ -6,6 +6,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Io = std.Io;
 const Sha256 = std.crypto.hash.sha2.Sha256;
 const tool_options = @import("tool_options");
 
@@ -17,8 +18,6 @@ const print = @import("output.zig").print;
 const cpu_arch = builtin.cpu.arch;
 const native_os = builtin.os.tag;
 
-const exe_name = if (native_os == .windows) "toml-test.exe" else "toml-test";
-const exe_path = tool_options.toml_test_path ++ std.fs.path.sep_str ++ exe_name;
 const base_url = "https://github.com/toml-lang/toml-test/releases/download/v{s}";
 const go_install_base_url = "github.com/toml-lang/toml-test/v2/cmd/toml-test";
 const go_install_url = std.fmt.comptimePrint("{s}@v{s}", .{ go_install_base_url, tool_options.toml_test_version });
@@ -78,36 +77,33 @@ const sha256_hashes = std.StaticStringMap(*const [Sha256.digest_length * 2]u8).i
 
 var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
 
-pub fn main() !void {
-    const gpa = debug_allocator.allocator();
-    defer _ = debug_allocator.deinit();
+pub fn main(init: std.process.Init) !void {
+    const cwd = Io.Dir.cwd();
 
-    const cwd = std.fs.cwd();
+    try cwd.createDirPath(init.io, tool_options.local_toml_test_path);
 
-    try cwd.makePath(tool_options.toml_test_path);
-
-    if (try isInstalled(gpa, exe_path)) {
-        try print("toml-test version {s} already installed\n", .{tool_options.toml_test_version});
+    if (try isInstalled(init.gpa, init.io, tool_options.local_toml_test_exe)) {
+        try print(init.io, "toml-test version {s} already installed\n", .{tool_options.toml_test_version});
         return;
     }
 
     if (hasPrebuilt()) {
-        try installPrebuilt(gpa);
+        try installPrebuilt(init.gpa, init.io);
     } else {
-        try installSource(gpa);
+        try installSource(init.gpa, init.io, init.environ_map);
     }
 
-    if (try isInstalled(gpa, exe_path)) {
-        try print("toml-test version {s} installed\n", .{tool_options.toml_test_version});
+    if (try isInstalled(init.gpa, init.io, tool_options.local_toml_test_exe)) {
+        try print(init.io, "toml-test version {s} installed\n", .{tool_options.toml_test_version});
         return;
     }
 
-    return fail("unknown error when installing toml-test\n", .{});
+    return fail(init.io, "unknown error when installing toml-test\n", .{});
 }
 
-fn isInstalled(gpa: Allocator, path: []const u8) !bool {
-    if (std.fs.cwd().openFile(path, .{})) |f| {
-        defer f.close();
+fn isInstalled(gpa: Allocator, io: Io, path: []const u8) !bool {
+    if (Io.Dir.cwd().openFile(io, path, .{})) |f| {
+        defer f.close(io);
     } else |err| switch (err) {
         error.FileNotFound => {
             return false;
@@ -115,41 +111,32 @@ fn isInstalled(gpa: Allocator, path: []const u8) !bool {
         else => return err,
     }
 
-    var child_stdout: ArrayList(u8) = .empty;
-    var child_stderr: ArrayList(u8) = .empty;
-    defer child_stdout.deinit(gpa);
-    defer child_stderr.deinit(gpa);
+    const run_result = try std.process.run(gpa, io, .{ .argv = &.{ path, "version" } });
+    defer gpa.free(run_result.stderr);
+    defer gpa.free(run_result.stdout);
 
-    var child = std.process.Child.init(&.{ path, "version" }, gpa);
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-
-    try child.spawn();
-    errdefer _ = child.kill() catch {};
-
-    try child.collectOutput(gpa, &child_stdout, &child_stderr, 256);
-    const term = try child.wait();
-
-    if (term != .Exited or term.Exited != 0) {
-        return error.TomlTestFailed;
-    }
-
-    const out = try child_stdout.toOwnedSlice(gpa);
-    defer gpa.free(out);
-
-    const trimmed = std.mem.trim(u8, out, " \n\r");
+    const trimmed = std.mem.trim(u8, run_result.stdout, " \n\r");
     var it = std.mem.splitScalar(u8, trimmed, ' ');
     var next = it.next() orelse return fail(
+        io,
         "unexpected 'toml-test version' output, first token not found:\n{s}\n",
-        .{out},
+        .{run_result.stdout},
     );
     if (!std.mem.eql(u8, next, "toml-test")) {
-        return fail("unexpected 'toml-test version' first token '{s}', expected 'toml-test':\n{s}\n", .{ next, out });
+        return fail(
+            io,
+            "unexpected 'toml-test version' first token '{s}', expected 'toml-test':\n{s}\n",
+            .{
+                next,
+                run_result.stdout,
+            },
+        );
     }
 
     next = it.next() orelse return fail(
+        io,
         "unexpected 'toml-test version' output, second token not found:\n{s}\n",
-        .{out},
+        .{run_result.stdout},
     );
     next = std.mem.trimStart(u8, next, "v \n\r");
     next = std.mem.trimEnd(u8, next, "; \n\r");
@@ -167,60 +154,61 @@ fn hasPrebuilt() bool {
     return false;
 }
 
-fn installPrebuilt(gpa: Allocator) !void {
+fn installPrebuilt(gpa: Allocator, io: Io) !void {
     const fmt_base_url = try std.fmt.allocPrint(gpa, base_url, .{tool_options.toml_test_version});
     defer gpa.free(fmt_base_url);
     const url = try std.mem.concat(gpa, u8, &.{ fmt_base_url, "/", archive_name });
     defer gpa.free(url);
 
-    try print("downloading from {s}\n", .{url});
+    try print(io, "downloading from {s}\n", .{url});
 
-    const cwd = std.fs.cwd();
+    const cwd = Io.Dir.cwd();
 
     const tmp_archive_name = "toml-test.gz";
-    var tmp_dir = try file.makeTempDir(gpa, cwd, ".tmp-toml-test");
-    defer tmp_dir.deinit(gpa, cwd);
+    var tmp_dir = try file.makeTempDir(gpa, io, cwd, ".tmp-toml-test");
+    defer tmp_dir.deinit(gpa, io, cwd);
 
-    const tmp_archive_path = try std.fs.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
+    const tmp_archive_path = try Io.Dir.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
     defer gpa.free(tmp_archive_path);
 
-    try print("downloading to {s}\n", .{tmp_archive_path});
+    try print(io, "downloading to {s}\n", .{tmp_archive_path});
 
-    try file.fetch(gpa, tmp_dir.dir, url, tmp_archive_name);
+    try file.fetch(gpa, io, tmp_dir.dir, url, tmp_archive_name);
 
-    try print("verifying SHA256 checksum of {s}\n", .{tmp_archive_path});
+    try print(io, "verifying SHA256 checksum of {s}\n", .{tmp_archive_path});
 
     file.verifySha256(
+        io,
         tmp_dir.dir,
         tmp_archive_name,
         sha256_hashes.get(archive_name) orelse return error.UnknownArtifact,
     ) catch |err| {
-        const path = try std.fs.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
+        const path = try Io.Dir.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
         defer gpa.free(path);
         return switch (err) {
-            error.Reported => fail("checking the SHA256 checksum of {s} failed\n", .{path}),
-            else => fail("checking the SHA256 checksum of {s} failed: {t}\n", .{ path, err }),
+            error.Reported => fail(io, "checking the SHA256 checksum of {s} failed\n", .{path}),
+            else => fail(io, "checking the SHA256 checksum of {s} failed: {t}\n", .{ path, err }),
         };
     };
 
-    try print("extracting from {s} to {s}\n", .{ tmp_archive_path, exe_path });
+    try print(io, "extracting from {s} to {s}\n", .{ tmp_archive_path, tool_options.local_toml_test_exe });
 
-    try file.extractGz(tmp_dir.dir, cwd, tmp_archive_name, exe_path);
+    try file.extractGz(io, tmp_dir.dir, cwd, tmp_archive_name, tool_options.local_toml_test_exe);
 
     if (native_os != .windows) {
-        const exe = try cwd.openFile(exe_path, .{});
-        defer exe.close();
-        try exe.chmod(0o755);
+        const exe = try cwd.openFile(io, tool_options.local_toml_test_exe, .{});
+        defer exe.close(io);
+        try exe.setPermissions(io, .executable_file);
     }
 }
 
-fn installSource(gpa: Allocator) !void {
-    try print("installing 'toml-test' using Go\n", .{});
+fn installSource(gpa: Allocator, io: Io, environ_map: *std.process.Environ.Map) !void {
+    try print(io, "installing 'toml-test' using Go\n", .{});
 
-    const cwd = std.fs.cwd();
+    const cwd = Io.Dir.cwd();
 
-    var tmp_dir = try file.makeTempDir(gpa, cwd, ".tmp-go-install-toml-test");
-    defer tmp_dir.deinit(gpa, cwd);
+    var tmp_dir = try file.makeTempDir(gpa, io, cwd, ".tmp-go-install-toml-test");
+    defer tmp_dir.deinit(gpa, io, cwd);
 
     const ldflags = try std.mem.concat(gpa, u8, &.{
         "-X \"zgo.at/zli.version=v",
@@ -230,22 +218,33 @@ fn installSource(gpa: Allocator) !void {
     });
     defer gpa.free(ldflags);
 
-    try go.invoke(gpa, &.{ "install", "-ldflags", ldflags, go_install_url }, tmp_dir.name);
+    try go.invoke(
+        gpa,
+        io,
+        environ_map,
+        &.{
+            "install",
+            "-ldflags",
+            ldflags,
+            go_install_url,
+        },
+        tmp_dir.name,
+    );
 
     if (native_os != .windows) {
-        try file.recursivelySetPermissions(tmp_dir.dir, 0o755, 0o644);
+        try file.recursivelySetPermissions(io, tmp_dir.dir, @enumFromInt(0o755), @enumFromInt(0o644));
     }
 
-    const tmp_bin = try std.fs.path.join(gpa, &.{ tmp_dir.name, "bin", exe_name });
+    const tmp_bin = try Io.Dir.path.join(gpa, &.{ tmp_dir.name, "bin", tool_options.toml_test_exe_name });
     defer gpa.free(tmp_bin);
 
-    try print("moving 'toml-test' from '{s}' to '{s}'\n", .{ tmp_bin, exe_path });
+    try print(io, "moving 'toml-test' from '{s}' to '{s}'\n", .{ tmp_bin, tool_options.local_toml_test_exe });
 
-    try cwd.rename(tmp_bin, exe_path);
+    try cwd.rename(tmp_bin, cwd, tool_options.local_toml_test_exe, io);
 
     if (native_os != .windows) {
-        const exe = try cwd.openFile(exe_path, .{});
-        defer exe.close();
-        try exe.chmod(0o755);
+        const exe = try cwd.openFile(io, tool_options.local_toml_test_exe, .{});
+        defer exe.close(io);
+        try exe.setPermissions(io, .executable_file);
     }
 }

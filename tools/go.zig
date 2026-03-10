@@ -6,6 +6,7 @@ const builtin = @import("builtin");
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArrayList = std.ArrayList;
+const Io = std.Io;
 const Sha256 = std.crypto.hash.sha2.Sha256;
 const tool_options = @import("tool_options");
 
@@ -21,7 +22,7 @@ const min_go_version: std.SemanticVersion = .{ .major = 1, .minor = 25, .patch =
 const max_go_version: std.SemanticVersion = .{ .major = 1, .minor = 27, .patch = 0 };
 
 const exe_name = if (native_os == .windows) "go.exe" else "go";
-const exe_path = tool_options.go_path ++ std.fs.path.sep_str ++ "bin" ++ std.fs.path.sep_str ++ exe_name;
+const exe_path = tool_options.go_path ++ Io.Dir.path.sep_str ++ "bin" ++ Io.Dir.path.sep_str ++ exe_name;
 const system_go = "go";
 const base_url = "https://go.dev/dl";
 const archive_extension = switch (native_os) {
@@ -57,8 +58,14 @@ const sha256_hashes = std.StaticStringMap(*const [Sha256.digest_length * 2]u8).i
     .{ "go1.26.0.windows-arm64.zip", "73bdbb9f64aa152758024485c5243a1098182bb741fcc603b6fb664ee5e0fe35" },
 });
 
-pub fn invoke(gpa: Allocator, args: []const []const u8, gopath: []const u8) !void {
-    const exe = try getOrInstallExecutable(gpa);
+pub fn invoke(
+    gpa: Allocator,
+    io: Io,
+    environ_map: *std.process.Environ.Map,
+    args: []const []const u8,
+    gopath: []const u8,
+) !void {
+    const exe = try getOrInstallExecutable(gpa, io);
 
     const argv = try gpa.alloc([]const u8, args.len + 1);
     defer gpa.free(argv);
@@ -68,113 +75,110 @@ pub fn invoke(gpa: Allocator, args: []const []const u8, gopath: []const u8) !voi
         argv[i + 1] = arg;
     }
 
-    var env_map = try std.process.getEnvMap(gpa);
-    defer env_map.deinit();
-
-    const absolute_gopath = try std.fs.cwd().realpathAlloc(gpa, gopath);
+    const absolute_gopath = try Io.Dir.cwd().realPathFileAlloc(io, gopath, gpa);
     defer gpa.free(absolute_gopath);
 
-    try env_map.put("GOPATH", absolute_gopath);
+    try environ_map.put("GOPATH", absolute_gopath);
 
     const joined_argv = try std.mem.join(gpa, " ", argv);
     defer gpa.free(joined_argv);
 
-    try print("+ {s}\n", .{joined_argv});
+    try print(io, "+ {s}\n", .{joined_argv});
 
-    var child = std.process.Child.init(argv, gpa);
-    child.env_map = &env_map;
+    var child = try std.process.spawn(io, .{
+        .argv = argv,
+        .environ_map = environ_map,
+    });
 
-    try child.spawn();
-    errdefer _ = child.kill() catch {};
+    const term = try child.wait(io);
 
-    const term = try child.wait();
-
-    if (term != .Exited or term.Exited != 0) {
+    if (term != .exited or term.exited != 0) {
         return error.GoFailed;
     }
 }
 
-fn getOrInstallExecutable(gpa: Allocator) ![]const u8 {
-    if (try hasLocalGo(gpa, exe_path)) {
+fn getOrInstallExecutable(gpa: Allocator, io: Io) ![]const u8 {
+    if (try hasLocalGo(gpa, io, exe_path)) {
         return exe_path;
     }
 
-    if (try hasSystemGo(gpa)) {
+    if (hasCorrectVersion(gpa, io, system_go) catch false) {
         return system_go;
     }
 
     const url = try std.mem.concat(gpa, u8, &.{ base_url, "/", archive_name });
     defer gpa.free(url);
 
-    try print("downloading Go from {s}\n", .{url});
+    try print(io, "downloading Go from {s}\n", .{url});
 
-    const cwd = std.fs.cwd();
+    const cwd = Io.Dir.cwd();
 
-    var go_dir = try cwd.makeOpenPath(tool_options.go_path, .{});
-    defer go_dir.close();
+    var go_dir = try cwd.createDirPathOpen(io, tool_options.go_path, .{});
+    defer go_dir.close(io);
 
     const tmp_archive_name = "go" ++ archive_extension;
-    var tmp_dir = try file.makeTempDir(gpa, cwd, ".tmp-go");
-    defer tmp_dir.deinit(gpa, cwd);
+    var tmp_dir = try file.makeTempDir(gpa, io, cwd, ".tmp-go");
+    defer tmp_dir.deinit(gpa, io, cwd);
 
-    const tmp_archive_path = try std.fs.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
+    const tmp_archive_path = try Io.Dir.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
     defer gpa.free(tmp_archive_path);
 
-    try print("downloading Go to {s}\n", .{tmp_archive_path});
+    try print(io, "downloading Go to {s}\n", .{tmp_archive_path});
 
-    try file.fetch(gpa, tmp_dir.dir, url, tmp_archive_name);
+    try file.fetch(gpa, io, tmp_dir.dir, url, tmp_archive_name);
 
-    try print("verifying SHA256 checksum of {s}\n", .{tmp_archive_path});
+    try print(io, "verifying SHA256 checksum of {s}\n", .{tmp_archive_path});
 
     file.verifySha256(
+        io,
         tmp_dir.dir,
         tmp_archive_name,
-        sha256_hashes.get(archive_name) orelse return fail("unknown Go artifact: {s}\n", .{archive_name}),
+        sha256_hashes.get(archive_name) orelse return fail(io, "unknown Go artifact: {s}\n", .{archive_name}),
     ) catch |err| {
-        const path = try std.fs.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
+        const path = try Io.Dir.path.join(gpa, &.{ tmp_dir.name, tmp_archive_name });
         defer gpa.free(path);
         return switch (err) {
-            error.Reported => fail("checking the SHA256 checksum of {s} failed\n", .{path}),
-            else => fail("checking the SHA256 checksum of {s} failed: {t}\n", .{ path, err }),
+            error.Reported => fail(io, "checking the SHA256 checksum of {s} failed\n", .{path}),
+            else => fail(io, "checking the SHA256 checksum of {s} failed: {t}\n", .{ path, err }),
         };
     };
 
-    var extract_dir = try file.makeTempDir(gpa, cwd, ".tmp-extract-go");
-    defer extract_dir.deinit(gpa, cwd);
+    var extract_dir = try file.makeTempDir(gpa, io, cwd, ".tmp-extract-go");
+    defer extract_dir.deinit(gpa, io, cwd);
 
-    try print("extracting from {s} to {s}\n", .{ tmp_archive_path, extract_dir.name });
+    try print(io, "extracting from {s} to {s}\n", .{ tmp_archive_path, extract_dir.name });
 
-    if (file.exists(cwd, tool_options.go_path)) {
-        try cwd.deleteTree(tool_options.go_path);
+    if (file.exists(io, cwd, tool_options.go_path)) {
+        try cwd.deleteTree(io, tool_options.go_path);
     }
 
     if (std.mem.eql(u8, archive_extension, ".zip")) {
-        try file.extractZip(tmp_dir.dir, extract_dir.dir, tmp_archive_name);
+        try file.extractZip(io, tmp_dir.dir, extract_dir.dir, tmp_archive_name);
     } else if (std.mem.eql(u8, archive_extension, ".tar.gz")) {
-        try file.extractTarGz(gpa, tmp_dir.dir, extract_dir.dir, tmp_archive_name);
+        try file.extractTarGz(gpa, io, tmp_dir.dir, extract_dir.dir, tmp_archive_name);
     } else {
         @panic("unknown archive extension: " ++ archive_extension);
     }
 
-    try cwd.makePath(std.fs.path.dirname(tool_options.go_path).?);
+    try cwd.createDirPath(io, Io.Dir.path.dirname(tool_options.go_path).?);
 
-    const extracted_go_path = try std.fs.path.join(gpa, &.{ extract_dir.name, "go" });
+    const extracted_go_path = try Io.Dir.path.join(gpa, &.{ extract_dir.name, "go" });
     defer gpa.free(extracted_go_path);
 
-    try cwd.rename(extracted_go_path, tool_options.go_path);
+    try cwd.rename(extracted_go_path, cwd, tool_options.go_path, io);
 
     if (native_os != .windows) {
-        const exe = try cwd.openFile(exe_path, .{});
-        defer exe.close();
-        try exe.chmod(0o755);
+        const exe = try cwd.openFile(io, exe_path, .{});
+        defer exe.close(io);
+        try exe.setPermissions(io, .executable_file);
     }
 
     return exe_path;
 }
 
-fn hasLocalGo(gpa: Allocator, path: []const u8) !bool {
-    if (std.fs.cwd().openFile(path, .{})) |f| {
-        defer f.close();
+fn hasLocalGo(gpa: Allocator, io: Io, path: []const u8) !bool {
+    if (Io.Dir.cwd().openFile(io, path, .{})) |f| {
+        defer f.close(io);
     } else |err| switch (err) {
         error.FileNotFound => {
             return false;
@@ -182,64 +186,46 @@ fn hasLocalGo(gpa: Allocator, path: []const u8) !bool {
         else => return err,
     }
 
-    const out = captureStdout(gpa, &.{ path, "version" }) catch return false;
-    defer gpa.free(out);
-
-    return hasCorrectVersion(out) catch return false;
+    return hasCorrectVersion(gpa, io, path) catch false;
 }
 
-fn hasSystemGo(gpa: Allocator) !bool {
-    const out = captureStdout(gpa, &.{ system_go, "version" }) catch return false;
-    defer gpa.free(out);
+fn hasCorrectVersion(gpa: Allocator, io: Io, go: []const u8) !bool {
+    const run_result = std.process.run(gpa, io, .{ .argv = &.{ go, "version" } }) catch return false;
+    defer gpa.free(run_result.stdout);
+    defer gpa.free(run_result.stderr);
 
-    return hasCorrectVersion(out) catch return false;
-}
-
-fn captureStdout(gpa: Allocator, argv: []const []const u8) ![]const u8 {
-    var child_stdout: ArrayList(u8) = .empty;
-    var child_stderr: ArrayList(u8) = .empty;
-    defer child_stdout.deinit(gpa);
-    defer child_stderr.deinit(gpa);
-
-    var child = std.process.Child.init(argv, gpa);
-    child.stdout_behavior = .Pipe;
-    child.stderr_behavior = .Pipe;
-
-    try child.spawn();
-    errdefer _ = child.kill() catch {};
-
-    try child.collectOutput(gpa, &child_stdout, &child_stderr, 256);
-    const term = try child.wait();
-
-    if (term != .Exited or term.Exited != 0) {
-        return error.GoFailed;
-    }
-
-    return child_stdout.toOwnedSlice(gpa);
-}
-
-fn hasCorrectVersion(cmd_output: []const u8) !bool {
-    const trimmed = std.mem.trim(u8, cmd_output, " \n\r");
+    const trimmed = std.mem.trim(u8, run_result.stdout, " \n\r");
     var it = std.mem.splitScalar(u8, trimmed, ' ');
     var next = it.next() orelse return fail(
+        io,
         "unexpected 'go version' output, first token not found:\n{s}\n",
-        .{cmd_output},
+        .{run_result.stdout},
     );
     if (!std.mem.eql(u8, next, "go")) {
-        return fail("unexpected 'go version' first token '{s}', expected 'go':\n{s}\n", .{ next, cmd_output });
+        return fail(
+            io,
+            "unexpected 'go version' first token '{s}', expected 'go':\n{s}\n",
+            .{ next, run_result.stdout },
+        );
     }
 
     next = it.next() orelse return fail(
+        io,
         "unexpected 'go version' output, second token not found:\n{s}\n",
-        .{cmd_output},
+        .{run_result.stdout},
     );
     if (!std.mem.eql(u8, next, "version")) {
-        return fail("unexpected 'go version' second token '{s}', expected 'version':\n{s}\n", .{ next, cmd_output });
+        return fail(
+            io,
+            "unexpected 'go version' second token '{s}', expected 'version':\n{s}\n",
+            .{ next, run_result.stdout },
+        );
     }
 
     next = it.next() orelse return fail(
+        io,
         "unexpected 'go version' output, third token not found:\n{s}\n",
-        .{cmd_output},
+        .{run_result.stdout},
     );
     next = next[2..];
     next = std.mem.trimStart(u8, next, " \n\r");
