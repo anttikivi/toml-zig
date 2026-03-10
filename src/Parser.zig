@@ -2,8 +2,8 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-const Tokenizer = @This();
+const Parser = @This();
 
-pub fn init() Tokenizer {
+pub fn init() Parser {
     return .{};
 }

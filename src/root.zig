@@ -4,10 +4,6 @@
 
 const std = @import("std");
 
-pub const decode = @import("decoder.zig").decode;
-pub const DecodeOptions = @import("decoder.zig").DecodeOptions;
-pub const Parsed = @import("decoder.zig").Parsed;
-
 /// TOML versions that this parser supports.
 pub const Version = enum {
     @"1.1.0",
