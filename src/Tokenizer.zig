@@ -84,7 +84,9 @@ const State = enum {
     string_start,
     string,
     string_backslash,
+    multiline_string_start,
     multiline_string,
+    multiline_string_backslash,
 };
 
 pub fn init(buffer: []const u8, options: Options) Tokenizer {
@@ -442,7 +444,206 @@ pub fn next(self: *Tokenizer) Error!Token {
                 else => return self.fail(error.InvalidEscapeSequence, null),
             }
         },
-        .multiline_string => return error.NotImplemented,
+        .multiline_string_start => {
+            assert(self.index + 2 < self.buffer.len);
+            assert(self.buffer[self.index] == '"');
+            assert(self.buffer[self.index + 1] == '"');
+            assert(self.buffer[self.index + 2] == '"');
+
+            self.index += 2;
+            result.tag = .multiline_string;
+            continue :state .multiline_string;
+        },
+        .multiline_string => {
+            assert(self.index < self.buffer.len);
+
+            utf: switch (Utf8State.start) {
+                .start => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0 => return self.fail(error.InvalidControlCharacter, "unexpected null character"),
+                        '\r' => if (self.index + 1 < self.buffer.len and self.buffer[self.index + 1] == '\n') {
+                            continue :utf .start;
+                        } else {
+                            return self.fail(error.InvalidControlCharacter, null);
+                        },
+                        '"' => if (self.index + 2 < self.buffer.len and
+                            self.buffer[self.index + 1] == '"' and
+                            self.buffer[self.index + 2] == '"')
+                        {
+                            self.index += 2;
+                        } else {
+                            continue :utf .start;
+                        },
+                        '\\' => continue :state .multiline_string_backslash,
+                        '\t'...'\n', 0x20...0x21, 0x23...0x5b, 0x5d...0x7e => continue :utf .start, // printable characters
+                        1...8, 0x0b...0x0c, 0x0e...0x1f, 0x7f => return self.fail(error.InvalidControlCharacter, null),
+                        0xc2...0xdf => continue :utf .a,
+                        0xe1...0xec, 0xee...0xef => continue :utf .b,
+                        0xe0 => continue :utf .c,
+                        0xed => continue :utf .d,
+                        0xf1...0xf3 => continue :utf .e,
+                        0xf0 => continue :utf .f,
+                        0xf4 => continue :utf .g,
+                        0x80...0xbf, 0xc0...0xc1, 0xf5...0xff => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .a => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0xbf => continue :utf .start,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .b => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0xbf => continue :utf .a,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .c => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0xa0...0xbf => continue :utf .a,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .d => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0x9f => continue :utf .a,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .e => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0xbf => continue :utf .b,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .f => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x90...0xbf => continue :utf .b,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .g => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0x8f => continue :utf .b,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+            }
+        },
+        .multiline_string_backslash => {
+            assert(self.index < self.buffer.len);
+            assert(self.nextByte() == '\\');
+
+            self.index += 1;
+            switch (self.nextByte()) {
+                '"', '\\', 'b', 'f', 'n', 'r', 't' => continue :state .multiline_string,
+                '\n' => continue :state .multiline_string,
+                '\r' => if (self.index + 1 < self.buffer.len and self.buffer[self.index + 1] == '\n') {
+                    self.index += 1;
+                    continue :state .multiline_string;
+                } else {
+                    return self.fail(error.InvalidControlCharacter, null);
+                },
+                '\t', ' ' => {
+                    self.index += 1;
+                    ws: switch (self.nextByte()) {
+                        0 => return self.fail(error.InvalidControlCharacter, "unexpected null character"),
+                        '\t', ' ' => {
+                            self.index += 1;
+                            continue :ws self.nextByte();
+                        },
+                        '\n' => continue :state .multiline_string,
+                        '\r' => if (self.index + 1 < self.buffer.len and self.buffer[self.index + 1] == '\n') {
+                            self.index += 1;
+                            continue :state .multiline_string;
+                        } else {
+                            return self.fail(error.InvalidControlCharacter, null);
+                        },
+                        else => return self.fail(
+                            error.InvalidEscapeSequence,
+                            "only whitespace is allowed after a line-ending backslash",
+                        ),
+                    }
+                },
+                'e' => if (self.features.escape_e) {
+                    continue :state .multiline_string;
+                } else {
+                    return self.fail(error.InvalidEscapeSequence, null);
+                },
+                'x' => if (self.features.escape_xhh) {
+                    if (self.index + 2 >= self.buffer.len) {
+                        return self.fail(
+                            error.InvalidEscapeSequence,
+                            "escape sequence '\\xHH' must contain two hex characters",
+                        );
+                    }
+
+                    inline for (1..3) |i| {
+                        if (!std.ascii.isHex(self.buffer[self.index + i])) {
+                            return self.fail(
+                                error.InvalidEscapeSequence,
+                                "escape sequence '\\xHH' must contain two hex characters",
+                            );
+                        }
+                    }
+
+                    self.index += 2;
+                    continue :state .multiline_string;
+                } else {
+                    return self.fail(error.InvalidEscapeSequence, null);
+                },
+                'u' => {
+                    if (self.index + 4 >= self.buffer.len) {
+                        return self.fail(
+                            error.InvalidEscapeSequence,
+                            "escape sequence '\\uHHHH' must contain four hex characters",
+                        );
+                    }
+
+                    inline for (1..5) |i| {
+                        if (!std.ascii.isHex(self.buffer[self.index + i])) {
+                            return self.fail(
+                                error.InvalidEscapeSequence,
+                                "escape sequence '\\uHHHH' must contain four hex characters",
+                            );
+                        }
+                    }
+
+                    self.index += 4;
+                    continue :state .multiline_string;
+                },
+                'U' => {
+                    if (self.index + 8 >= self.buffer.len) {
+                        return self.fail(
+                            error.InvalidEscapeSequence,
+                            "escape sequence '\\UHHHHHHHH' must contain eight hex characters",
+                        );
+                    }
+
+                    inline for (1..9) |i| {
+                        if (!std.ascii.isHex(self.buffer[self.index + i])) {
+                            return self.fail(
+                                error.InvalidEscapeSequence,
+                                "escape sequence '\\UHHHHHHHH' must contain eight hex characters",
+                            );
+                        }
+                    }
+
+                    self.index += 8;
+                    continue :state .multiline_string;
+                },
+                else => return self.fail(error.InvalidEscapeSequence, null),
+            }
+        },
     }
 
     result.loc.end = self.index;
