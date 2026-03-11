@@ -174,14 +174,13 @@ pub fn next(self: *Tokenizer) Error!Token {
                         } else if (!self.comment_tokens) {
                             continue :state .start;
                         },
-                        '\t' => continue :utf .start,
                         // We can stop the comment at either a newline or
                         // a carriage return and let the next tokenizer run
                         // handle checking it.
                         '\n', '\r' => if (!self.comment_tokens) {
                             continue :state .start;
                         },
-                        0x20...0x7e => continue :utf .start, // printable characters
+                        '\t', 0x20...0x7e => continue :utf .start, // printable characters
                         1...8, 0x0b...0x0c, 0x0e...0x1f, 0x7f => return self.fail(error.InvalidControlCharacter, null),
                         0xc2...0xdf => continue :utf .a,
                         0xe1...0xec, 0xee...0xef => continue :utf .b,
@@ -295,7 +294,6 @@ pub fn next(self: *Tokenizer) Error!Token {
                     self.index += 1;
                     switch (self.nextByte()) {
                         0 => return self.fail(error.InvalidControlCharacter, "unexpected null character"),
-                        '\t' => continue :utf .start,
                         '\n' => return self.fail(error.UnterminatedString, null),
                         '\r' => if (self.index + 1 < self.buffer.len and self.buffer[self.index + 1] == '\n') {
                             return self.fail(error.UnterminatedString, null);
@@ -304,7 +302,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                         },
                         '"' => self.index += 1,
                         '\\' => continue :state .string_backslash,
-                        0x20...0x21, 0x23...0x5b, 0x5d...0x7e => continue :utf .start, // printable characters
+                        '\t', 0x20...0x21, 0x23...0x5b, 0x5d...0x7e => continue :utf .start, // printable characters
                         1...8, 0x0b...0x0c, 0x0e...0x1f, 0x7f => return self.fail(error.InvalidControlCharacter, null),
                         0xc2...0xdf => continue :utf .a,
                         0xe1...0xec, 0xee...0xef => continue :utf .b,
