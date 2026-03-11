@@ -28,6 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       minimum-zig-version: ${{ steps.read-version.outputs.minimum-zig-version }}
+      skip-benchmarks: ${{ steps.read-version.outputs.skip-benchmarks }}
       skip-bsd-jobs: ${{ steps.read-version.outputs.skip-bsd-jobs }}
     steps:
       - uses: actions/checkout@v6.0.2
@@ -44,15 +45,18 @@ jobs:
 
           case "${version}" in
             0.16.*)
+              skip_benchmarks=true
               skip_bsd_jobs=true
               ;;
             *)
+              skip_benchmarks=false
               skip_bsd_jobs=false
               ;;
           esac
 
           {
             printf 'minimum-zig-version=%s\n' "${version}"
+            printf 'skip-benchmarks=%s\n' "${skip_benchmarks}"
             printf 'skip-bsd-jobs=%s\n' "${skip_bsd_jobs}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -171,7 +175,8 @@ jobs:
       - run: .\ci\windows.ps1
 
   bench-linux:
-    needs: [aarch64-linux, x86_64-linux]
+    needs: [zig-version, aarch64-linux, x86_64-linux]
+    if: ${{ needs.zig-version.outputs.skip-benchmarks != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -181,7 +186,8 @@ jobs:
       - run: ./zig build bench-compare -Dbenchmarks="${{ env.BENCHMARKS }}" -Dcompare-refs="${{ env.COMPARE_REFS }}"
 
   bench-macos:
-    needs: [aarch64-macos, x86_64-macos]
+    needs: [zig-version, aarch64-macos, x86_64-macos]
+    if: ${{ needs.zig-version.outputs.skip-benchmarks != 'true' }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -191,7 +197,8 @@ jobs:
       - run: ./zig build bench-compare -Dbenchmarks="${{ env.BENCHMARKS }}" -Dcompare-refs="${{ env.COMPARE_REFS }}"
 
   bench-windows:
-    needs: [aarch64-windows, x86_64-windows]
+    needs: [zig-version, aarch64-windows, x86_64-windows]
+    if: ${{ needs.zig-version.outputs.skip-benchmarks != 'true' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6.0.2
