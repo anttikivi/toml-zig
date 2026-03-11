@@ -489,3 +489,51 @@ fn fail(self: Tokenizer, err: Error, msg: ?[]const u8) Error {
 
     return err;
 }
+
+const NextTestCase = struct {
+    buffer: []const u8,
+    tokens: []const Token,
+    toml_version: Version = default_version,
+    comment_tokens: bool = false,
+    whitespace_tokens: bool = false,
+};
+
+const next_test_cases: []const NextTestCase = &.{
+    .{
+        .buffer =
+        \\
+        \\
+        ,
+        .tokens = &.{
+            .{
+                .tag = .newline,
+                .loc = .{
+                    .start = 0,
+                    .end = 1,
+                },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{
+                    .start = 1,
+                    .end = 1,
+                },
+            },
+        },
+    },
+};
+
+test next {
+    for (next_test_cases) |case| {
+        var tokenizer: Tokenizer = .init(case.buffer, .{
+            .toml_version = case.toml_version,
+            .comment_tokens = case.comment_tokens,
+            .whitespace_tokens = case.whitespace_tokens,
+        });
+
+        for (case.tokens) |expected| {
+            const actual = try tokenizer.next();
+            try std.testing.expectEqualDeep(expected, actual);
+        }
+    }
+}
