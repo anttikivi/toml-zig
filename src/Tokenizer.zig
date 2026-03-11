@@ -75,7 +75,7 @@ const Features = packed struct {
 
 pub fn init(input: []const u8, options: Options) Tokenizer {
     return .{
-        .pos = 0,
+        .pos = if (std.mem.startsWith(u8, input, "\xef\xbb\xbf")) 3 else 0,
         .line = 0,
         .input = input,
         .features = .init(options.toml_version),
