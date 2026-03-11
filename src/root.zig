@@ -19,7 +19,27 @@ pub const Version = enum {
     @"1.0.0",
 };
 
-/// State type used by the UTF-8 validation algorithm.
+/// Configuration of TOML features added after version 1.0.0. It is used
+/// internally by the library while parsing to check which features are allowed
+/// based on the selected TOML version.
+pub const Features = packed struct {
+    escape_e: bool = false,
+    escape_xhh: bool = false,
+
+    const Self = @This();
+
+    pub fn init(toml_version: Version) Self {
+        return switch (toml_version) {
+            .@"1.0.0" => .{},
+            .@"1.1.0" => .{
+                .escape_e = true,
+                .escape_xhh = true,
+            },
+        };
+    }
+};
+
+/// State type used internally by the library in the UTF-8 validation algorithm.
 /// For more information, see:
 /// https://unicode.org/mail-arch/unicode-ml/y2003-m02/att-0467/01-The_Algorithm_to_Valide_an_UTF-8_String
 pub const Utf8State = enum { start, a, b, c, d, e, f, g };
