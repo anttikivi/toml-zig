@@ -7,13 +7,32 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
-$ZIG_VERSION = "0.16.0-dev.2736+3b515fbed"
-
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Definition
 $RepositoryRoot = Split-Path -Parent $ScriptDir
+$BuildZigZon = Join-Path $RepositoryRoot "build.zig.zon"
 $ToolsDir = Join-Path $RepositoryRoot "tools"
 $LocalZigDir = Join-Path $ToolsDir ".zig"
 $LocalZigBin = Join-Path $LocalZigDir "zig.exe"
+
+function Get-ZigVersion {
+    param(
+        [string]$BuildZigZonPath
+    )
+
+    if (-not (Test-Path -LiteralPath $BuildZigZonPath -PathType Leaf)) {
+        throw "missing build metadata file: $BuildZigZonPath"
+    }
+
+    foreach ($line in Get-Content -LiteralPath $BuildZigZonPath) {
+        if ($line -match '\.minimum_zig_version\s*=\s*"([^"]+)"') {
+            return $Matches[1]
+        }
+    }
+
+    throw "failed to read .minimum_zig_version from $BuildZigZonPath"
+}
+
+$ZIG_VERSION = Get-ZigVersion $BuildZigZon
 
 function Test-RightVersion {
     param(

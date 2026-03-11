@@ -6,13 +6,41 @@
 
 set -eu
 
-ZIG_VERSION="0.16.0-dev.2736+3b515fbed"
-
 SCRIPT_DIR="$(CDPATH="" cd -- "$(dirname -- "$0")" && pwd)"
 REPOSITORY_ROOT="$(CDPATH="" cd -- "${SCRIPT_DIR}/.." && pwd)"
+BUILD_ZIG_ZON="${REPOSITORY_ROOT}/build.zig.zon"
 TOOLS_DIR="${REPOSITORY_ROOT}/tools"
 LOCAL_ZIG_DIR="${TOOLS_DIR}/.zig"
 LOCAL_ZIG_BIN="${LOCAL_ZIG_DIR}/zig"
+
+read_zig_version() {
+    zon_file=$1
+
+    [ -r "${zon_file}" ] || {
+        echo "missing build metadata file: ${zon_file}" >&2
+        return 1
+    }
+
+    while IFS= read -r line || [ -n "${line}" ]; do
+        case "${line}" in
+        *".minimum_zig_version"*)
+            rest=${line#*\"}
+            [ "${rest}" != "${line}" ] || break
+
+            version=${rest%%\"*}
+            [ -n "${version}" ] || break
+
+            printf "%s\n" "${version}"
+            return 0
+            ;;
+        esac
+    done <"${zon_file}"
+
+    echo "failed to read .minimum_zig_version from ${zon_file}" >&2
+    return 1
+}
+
+ZIG_VERSION="$(read_zig_version "${BUILD_ZIG_ZON}")"
 
 is_right_version() {
     [ -n "$1" ] || return 1
