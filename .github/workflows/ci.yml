@@ -24,6 +24,38 @@ env:
   COMPARE_REFS: v0.2.0
 
 jobs:
+  zig-version:
+    runs-on: ubuntu-latest
+    outputs:
+      minimum-zig-version: ${{ steps.read-version.outputs.minimum-zig-version }}
+      skip-bsd-jobs: ${{ steps.read-version.outputs.skip-bsd-jobs }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - id: read-version
+        shell: sh
+        run: |
+          set -eu
+
+          version="$(sed -n 's/.*\.minimum_zig_version *= *"\([^"]*\)".*/\1/p' build.zig.zon)"
+          if [ -z "${version}" ]; then
+            echo "failed to read .minimum_zig_version from build.zig.zon" >&2
+            exit 1
+          fi
+
+          case "${version}" in
+            0.16.*)
+              skip_bsd_jobs=true
+              ;;
+            *)
+              skip_bsd_jobs=false
+              ;;
+          esac
+
+          {
+            printf 'minimum-zig-version=%s\n' "${version}"
+            printf 'skip-bsd-jobs=%s\n' "${skip_bsd_jobs}"
+          } >> "${GITHUB_OUTPUT}"
+
   shell:
     runs-on: ubuntu-latest
     steps:
@@ -51,6 +83,8 @@ jobs:
       - run: pipx run reuse lint
 
   aarch64-freebsd:
+    needs: zig-version
+    if: ${{ needs.zig-version.outputs.skip-bsd-jobs != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -74,6 +108,8 @@ jobs:
       - run: sh ci/aarch64-macos.sh
 
   aarch64-netbsd:
+    needs: zig-version
+    if: ${{ needs.zig-version.outputs.skip-bsd-jobs != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -91,6 +127,8 @@ jobs:
       - run: .\ci\windows.ps1
 
   x86_64-freebsd:
+    needs: zig-version
+    if: ${{ needs.zig-version.outputs.skip-bsd-jobs != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -114,6 +152,8 @@ jobs:
       - run: sh ci/x86_64-macos.sh
 
   x86_64-netbsd:
+    needs: zig-version
+    if: ${{ needs.zig-version.outputs.skip-bsd-jobs != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
