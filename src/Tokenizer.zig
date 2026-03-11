@@ -185,6 +185,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                         // a carriage return and let the next tokenizer run
                         // handle checking it.
                         '\n', '\r' => if (!self.comment_tokens) {
+                            result.loc.start = self.index;
                             continue :state .start;
                         },
                         '\t', 0x20...0x7e => continue :utf .start, // printable characters
@@ -1018,11 +1019,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .newline,
-                .loc = .{ .start = 0, .end = 3 },
+                .loc = .{ .start = 2, .end = 3 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 3, .end = 6 },
+                .loc = .{ .start = 5, .end = 6 },
             },
             .{
                 .tag = .end_of_file,
@@ -1065,7 +1066,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 3, .end = 9 },
+                .loc = .{ .start = 8, .end = 9 },
             },
             .{
                 .tag = .string,
@@ -1090,7 +1091,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 3, .end = 9 },
+                .loc = .{ .start = 8, .end = 9 },
             },
             .{
                 .tag = .end_of_file,
