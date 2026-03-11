@@ -39,14 +39,6 @@ pub const Options = struct {
     diagnostics: ?*Diagnostics = null,
 };
 
-const Error = Diagnostics.Error || error{
-    InvalidControlCharacter,
-    InvalidEscapeSequence,
-    InvalidUtf8,
-    UnexpectedToken,
-    UnterminatedString,
-};
-
 pub const Token = struct {
     tag: Tag,
     loc: Loc,
@@ -81,6 +73,14 @@ pub const Token = struct {
 
         end_of_file,
     };
+};
+
+const Error = Diagnostics.Error || error{
+    InvalidControlCharacter,
+    InvalidEscapeSequence,
+    InvalidUtf8,
+    UnexpectedToken,
+    UnterminatedString,
 };
 
 const State = enum {
@@ -1819,6 +1819,348 @@ const next_test_cases: []const NextTestCase = &.{
         .buffer = "\"\x80\"",
         .tokens = &.{},
         .@"error" = error.InvalidUtf8,
+    },
+    .{
+        .buffer =
+        \\#comment
+        \\key = "string"
+        \\key2 = 123
+        \\a.b.c = 1
+        \\array = [1, 2, 3]
+        \\inline = { foo = "bar" }
+        ,
+        .tokens = &.{
+            .{
+                .tag = .comment,
+                .loc = .{ .start = 0, .end = 8 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 8, .end = 9 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 9, .end = 12 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 12, .end = 13 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 13, .end = 14 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 14, .end = 15 },
+            },
+            .{
+                .tag = .string,
+                .loc = .{ .start = 15, .end = 23 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 23, .end = 24 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 24, .end = 28 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 28, .end = 29 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 29, .end = 30 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 30, .end = 31 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 31, .end = 34 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 34, .end = 35 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 35, .end = 40 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 40, .end = 41 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 41, .end = 42 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 42, .end = 43 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 43, .end = 44 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 44, .end = 45 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 45, .end = 50 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 50, .end = 51 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 51, .end = 52 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 52, .end = 53 },
+            },
+            .{
+                .tag = .left_bracket,
+                .loc = .{ .start = 53, .end = 54 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 54, .end = 55 },
+            },
+            .{
+                .tag = .comma,
+                .loc = .{ .start = 55, .end = 56 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 56, .end = 57 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 57, .end = 58 },
+            },
+            .{
+                .tag = .comma,
+                .loc = .{ .start = 58, .end = 59 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 59, .end = 60 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 60, .end = 61 },
+            },
+            .{
+                .tag = .right_bracket,
+                .loc = .{ .start = 61, .end = 62 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 62, .end = 63 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 63, .end = 69 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 69, .end = 70 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 70, .end = 71 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 71, .end = 72 },
+            },
+            .{
+                .tag = .left_brace,
+                .loc = .{ .start = 72, .end = 73 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 73, .end = 74 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 74, .end = 77 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 77, .end = 78 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 78, .end = 79 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 79, .end = 80 },
+            },
+            .{
+                .tag = .string,
+                .loc = .{ .start = 80, .end = 85 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 85, .end = 86 },
+            },
+            .{
+                .tag = .right_brace,
+                .loc = .{ .start = 86, .end = 87 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 87, .end = 87 },
+            },
+        },
+        .comment_tokens = true,
+        .whitespace_tokens = true,
+    },
+    .{
+        .buffer =
+        \\#comment
+        \\key = "string"
+        \\key2 = 123
+        \\a.b.c = 1
+        \\array = [1, 2, 3]
+        \\inline = { foo = "bar" }
+        ,
+        .tokens = &.{
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 8, .end = 9 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 9, .end = 12 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 13, .end = 14 },
+            },
+            .{
+                .tag = .string,
+                .loc = .{ .start = 15, .end = 23 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 23, .end = 24 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 24, .end = 28 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 29, .end = 30 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 31, .end = 34 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 34, .end = 35 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 35, .end = 40 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 41, .end = 42 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 43, .end = 44 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 44, .end = 45 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 45, .end = 50 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 51, .end = 52 },
+            },
+            .{
+                .tag = .left_bracket,
+                .loc = .{ .start = 53, .end = 54 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 54, .end = 55 },
+            },
+            .{
+                .tag = .comma,
+                .loc = .{ .start = 55, .end = 56 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 57, .end = 58 },
+            },
+            .{
+                .tag = .comma,
+                .loc = .{ .start = 58, .end = 59 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 60, .end = 61 },
+            },
+            .{
+                .tag = .right_bracket,
+                .loc = .{ .start = 61, .end = 62 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 62, .end = 63 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 63, .end = 69 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 70, .end = 71 },
+            },
+            .{
+                .tag = .left_brace,
+                .loc = .{ .start = 72, .end = 73 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 74, .end = 77 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 78, .end = 79 },
+            },
+            .{
+                .tag = .string,
+                .loc = .{ .start = 80, .end = 85 },
+            },
+            .{
+                .tag = .right_brace,
+                .loc = .{ .start = 86, .end = 87 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 87, .end = 87 },
+            },
+        },
     },
 };
 
