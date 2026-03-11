@@ -294,9 +294,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                 .start => {
                     self.index += 1;
                     switch (self.nextByte()) {
-                        0 => if (self.index < self.buffer.len) {
-                            return self.fail(error.InvalidControlCharacter, "unexpected null character");
-                        },
+                        0 => return self.fail(error.InvalidControlCharacter, "unexpected null character"),
                         '\t' => continue :utf .start,
                         '\n' => return self.fail(error.UnterminatedString, null),
                         '\r' => if (self.index + 1 < self.buffer.len and self.buffer[self.index + 1] == '\n') {
