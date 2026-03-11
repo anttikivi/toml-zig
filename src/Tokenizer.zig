@@ -918,6 +918,7 @@ fn fail(self: Tokenizer, err: Error, msg: ?[]const u8) Error {
 const NextTestCase = struct {
     buffer: []const u8,
     tokens: []const Token,
+    @"error": ?Error = null,
     toml_version: Version = default_version,
     comment_tokens: bool = false,
     whitespace_tokens: bool = false,
@@ -1734,6 +1735,83 @@ const next_test_cases: []const NextTestCase = &.{
             },
         },
     },
+    .{
+        .buffer = "\x00",
+        .tokens = &.{},
+        .@"error" = error.InvalidControlCharacter,
+    },
+    .{
+        .buffer = "\r",
+        .tokens = &.{},
+        .@"error" = error.InvalidControlCharacter,
+    },
+    .{
+        .buffer = "@",
+        .tokens = &.{},
+        .@"error" = error.UnexpectedToken,
+    },
+    .{
+        .buffer = "\"\n",
+        .tokens = &.{},
+        .@"error" = error.UnterminatedString,
+    },
+    .{
+        .buffer = "\"\\q\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidEscapeSequence,
+    },
+    .{
+        .buffer = "\"\\e\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidEscapeSequence,
+        .toml_version = .@"1.0.0",
+    },
+    .{
+        .buffer = "\"\\xy\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidEscapeSequence,
+    },
+    .{
+        .buffer = "\"\\xuh\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidEscapeSequence,
+    },
+    .{
+        .buffer = "\"\\x41\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidEscapeSequence,
+        .toml_version = .@"1.0.0",
+    },
+    .{
+        .buffer = "\"\\uhexs\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidEscapeSequence,
+    },
+    .{
+        .buffer = "\"\\uh\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidEscapeSequence,
+    },
+    .{
+        .buffer = "\"\\Uhexhexab\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidEscapeSequence,
+    },
+    .{
+        .buffer = "\"\\Uhex\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidEscapeSequence,
+    },
+    .{
+        .buffer = "# A comment \x80",
+        .tokens = &.{},
+        .@"error" = error.InvalidUtf8,
+    },
+    .{
+        .buffer = "\"\x80\"",
+        .tokens = &.{},
+        .@"error" = error.InvalidUtf8,
+    },
 };
 
 test next {
@@ -1744,9 +1822,13 @@ test next {
             .whitespace_tokens = case.whitespace_tokens,
         });
 
-        for (case.tokens) |expected| {
-            const actual = try tokenizer.next();
-            try std.testing.expectEqualDeep(expected, actual);
+        if (case.@"error") |expected| {
+            try std.testing.expectError(expected, tokenizer.next());
+        } else {
+            for (case.tokens) |expected| {
+                const actual = try tokenizer.next();
+                try std.testing.expectEqualDeep(expected, actual);
+            }
         }
     }
 }
