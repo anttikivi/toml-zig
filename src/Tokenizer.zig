@@ -53,6 +53,7 @@ pub const Token = struct {
 
     pub const Tag = enum {
         comment,
+        whitespace,
 
         string,
         multiline_string,
@@ -79,6 +80,7 @@ const State = enum {
     start,
     carriage_return,
     comment,
+    whitespace,
     left_bracket,
     right_bracket,
     string_start,
@@ -131,6 +133,7 @@ pub fn next(self: *Tokenizer) Error!Token {
             },
             '\r' => continue :state .carriage_return,
             '#' => continue :state .comment,
+            '\t', ' ' => continue :state .whitespace,
             '.' => {
                 result.tag = .dot;
                 self.index += 1;
@@ -248,6 +251,20 @@ pub fn next(self: *Tokenizer) Error!Token {
                         0x80...0x8f => continue :utf .b,
                         else => return self.fail(error.InvalidUtf8, null),
                     }
+                },
+            }
+        },
+        .whitespace => {
+            assert(self.index < self.buffer.len);
+            assert(self.nextByte() == '\t' or self.nextByte() == ' ');
+
+            result.tag = .whitespace;
+            self.index += 1;
+            switch (self.nextByte()) {
+                '\t', ' ' => continue :state .whitespace,
+                else => if (!self.whitespace_tokens) {
+                    result.loc.start = self.index;
+                    continue :state .start;
                 },
             }
         },
@@ -1056,6 +1073,84 @@ const next_test_cases: []const NextTestCase = &.{
             },
         },
         .comment_tokens = true,
+    },
+    .{
+        .buffer = " \t\n",
+        .tokens = &.{
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 2, .end = 3 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 3, .end = 3 },
+            },
+        },
+    },
+    .{
+        .buffer = " \t\n",
+        .tokens = &.{
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 0, .end = 2 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 2, .end = 3 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 3, .end = 3 },
+            },
+        },
+        .whitespace_tokens = true,
+    },
+    .{
+        .buffer = "\"x\" \t\"hello\"\n",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .string,
+                .loc = .{ .start = 5, .end = 12 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 12, .end = 13 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 13, .end = 13 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"x\" \t\"hello\"\n",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .whitespace,
+                .loc = .{ .start = 3, .end = 5 },
+            },
+            .{
+                .tag = .string,
+                .loc = .{ .start = 5, .end = 12 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 12, .end = 13 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 13, .end = 13 },
+            },
+        },
+        .whitespace_tokens = true,
     },
     .{
         .buffer = "\"x\"#note\n\"hello\"\n",
