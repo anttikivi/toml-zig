@@ -7,7 +7,7 @@ const std = @import("std");
 const ArrayList = std.ArrayList;
 
 const bench_data = @import("test/bench_data.zig");
-const toml = @import("src/root.zig");
+const toml = @import("src/toml.zig");
 
 const toml_test_version: std.SemanticVersion = .{ .major = 2, .minor = 1, .patch = 0 };
 const max_toml_test_version: std.SemanticVersion = .{ .major = 2, .minor = 2, .patch = 0 };

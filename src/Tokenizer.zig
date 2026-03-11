@@ -19,11 +19,11 @@ const Tokenizer = @This();
 const std = @import("std");
 const assert = std.debug.assert;
 
-const Diagnostics = @import("Diagnostics.zig");
-const default_version = @import("root.zig").default_version;
-const Features = @import("root.zig").Features;
+const Diagnostics = @import("root.zig").Diagnostics;
 const Utf8State = @import("root.zig").Utf8State;
-const Version = @import("root.zig").Version;
+const default_version = @import("toml.zig").default_version;
+const Features = @import("toml.zig").Features;
+const Version = @import("toml.zig").Version;
 
 buffer: []const u8,
 index: usize,

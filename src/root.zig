@@ -6,37 +6,20 @@ const std = @import("std");
 
 pub const decode = @import("Decoder.zig").decode;
 pub const Decoder = @import("Decoder.zig");
-pub const Diagnostics = @import("Diagnostics.zig");
 pub const Parser = @import("Parser.zig");
 pub const Tokenizer = @import("Tokenizer.zig");
+pub const Token = @import("Tokenizer.zig").Token;
+pub const default_version = @import("toml.zig").default_version;
+pub const Features = @import("toml.zig").Features;
+pub const Version = @import("toml.zig").Version;
 
-/// The default TOML version used by the library.
-pub const default_version: Version = .@"1.1.0";
+pub const Diagnostics = struct {
+    line_number: usize = 1,
+    column: usize = 0,
+    snippet: []const u8 = "",
+    message: []const u8 = "",
 
-/// TOML versions that this parser supports.
-pub const Version = enum {
-    @"1.1.0",
-    @"1.0.0",
-};
-
-/// Configuration of TOML features added after version 1.0.0. It is used
-/// internally by the library while parsing to check which features are allowed
-/// based on the selected TOML version.
-pub const Features = packed struct {
-    escape_e: bool = false,
-    escape_xhh: bool = false,
-
-    const Self = @This();
-
-    pub fn init(toml_version: Version) Self {
-        return switch (toml_version) {
-            .@"1.0.0" => .{},
-            .@"1.1.0" => .{
-                .escape_e = true,
-                .escape_xhh = true,
-            },
-        };
-    }
+    pub const Error = error{Reported};
 };
 
 /// State type used internally by the library in the UTF-8 validation algorithm.
