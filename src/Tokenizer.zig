@@ -87,6 +87,8 @@ const State = enum {
     multiline_string_start,
     multiline_string,
     multiline_string_backslash,
+    literal_string_start,
+    literal_string,
 };
 
 pub fn init(buffer: []const u8, options: Options) Tokenizer {
@@ -150,6 +152,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                 self.index += 1;
             },
             '"' => continue :state .string_start,
+            '\'' => continue :state .literal_string_start,
             else => return error.NotImplemented,
         },
         .carriage_return => {
@@ -642,6 +645,98 @@ pub fn next(self: *Tokenizer) Error!Token {
                     continue :state .multiline_string;
                 },
                 else => return self.fail(error.InvalidEscapeSequence, null),
+            }
+        },
+        .literal_string_start => {
+            assert(self.index < self.buffer.len);
+            assert(self.nextByte() == '\'');
+
+            if (self.index + 2 < self.buffer.len and
+                self.buffer[self.index + 1] == '\'' and
+                self.buffer[self.index + 2] == '\'')
+            {
+                continue :state .multiline_literal_string;
+            }
+
+            result.tag = .literal_string;
+            continue :state .literal_string;
+        },
+        .literal_string => {
+            assert(self.index < self.buffer.len);
+
+            utf: switch (Utf8State.start) {
+                .start => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0 => return self.fail(error.InvalidControlCharacter, "unexpected null character"),
+                        '\n' => return self.fail(error.UnterminatedString, null),
+                        '\r' => if (self.index + 1 < self.buffer.len and self.buffer[self.index + 1] == '\n') {
+                            return self.fail(error.UnterminatedString, null);
+                        } else {
+                            return self.fail(error.InvalidControlCharacter, null);
+                        },
+                        '\'' => self.index += 1,
+                        '\t', 0x20...0x26, 0x28...0x7e => continue :utf .start, // printable characters
+                        1...8, 0x0b...0x0c, 0x0e...0x1f, 0x7f => return self.fail(error.InvalidControlCharacter, null),
+                        0xc2...0xdf => continue :utf .a,
+                        0xe1...0xec, 0xee...0xef => continue :utf .b,
+                        0xe0 => continue :utf .c,
+                        0xed => continue :utf .d,
+                        0xf1...0xf3 => continue :utf .e,
+                        0xf0 => continue :utf .f,
+                        0xf4 => continue :utf .g,
+                        0x80...0xbf, 0xc0...0xc1, 0xf5...0xff => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .a => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0xbf => continue :utf .start,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .b => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0xbf => continue :utf .a,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .c => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0xa0...0xbf => continue :utf .a,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .d => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0x9f => continue :utf .a,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .e => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0xbf => continue :utf .b,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .f => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x90...0xbf => continue :utf .b,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
+                .g => {
+                    self.index += 1;
+                    switch (self.nextByte()) {
+                        0x80...0x8f => continue :utf .b,
+                        else => return self.fail(error.InvalidUtf8, null),
+                    }
+                },
             }
         },
     }
