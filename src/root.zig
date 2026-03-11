@@ -19,6 +19,11 @@ pub const Version = enum {
     @"1.0.0",
 };
 
+/// State type used by the UTF-8 validation algorithm.
+/// For more information, see:
+/// https://unicode.org/mail-arch/unicode-ml/y2003-m02/att-0467/01-The_Algorithm_to_Valide_an_UTF-8_String
+pub const Utf8State = enum { start, a, b, c, d, e, f, g };
+
 test {
     std.testing.refAllDecls(@This());
 }

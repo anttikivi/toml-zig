@@ -9,6 +9,7 @@ const assert = std.debug.assert;
 
 const Diagnostics = @import("Diagnostics.zig");
 const default_version = @import("root.zig").default_version;
+const Utf8State = @import("root.zig").Utf8State;
 const Version = @import("root.zig").Version;
 
 pos: usize,
@@ -71,10 +72,6 @@ const Features = packed struct {
         };
     }
 };
-
-// UTF-8 validation algorithm.
-// https://unicode.org/mail-arch/unicode-ml/y2003-m02/att-0467/01-The_Algorithm_to_Valide_an_UTF-8_String
-const Utf8State = enum { start, a, b, c, d, e, f, g };
 
 pub fn init(input: []const u8, options: Options) Tokenizer {
     return .{
@@ -160,6 +157,10 @@ pub fn next(self: *Tokenizer) Error!Token {
                         else => return self.fail(error.InvalidUtf8, null),
                     },
                 }
+            }
+
+            if (state != .start) {
+                return self.fail(error.InvalidUtf8, null);
             }
         },
         '.' => return .{ .type = .dot, .start = start, .end = self.pos },
@@ -272,6 +273,10 @@ fn nextString(self: *Tokenizer) Error!Token {
                 else => return self.fail(error.InvalidUtf8, null),
             },
         }
+    }
+
+    if (state != .start) {
+        return self.fail(error.InvalidUtf8, null);
     }
 
     // Do a double-check here. The alternative would be to include check for
