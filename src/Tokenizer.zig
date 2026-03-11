@@ -35,7 +35,7 @@ pub const Options = struct {
     diagnostics: ?*Diagnostics = null,
 };
 
-const Error = Diagnostics.Error || error.NotImplemented || error{
+const Error = Diagnostics.Error || error{NotImplemented} || error{
     InvalidControlCharacter,
     InvalidEscapeSequence,
     InvalidUtf8,
@@ -91,7 +91,6 @@ pub fn init(buffer: []const u8, options: Options) Tokenizer {
     return .{
         .buffer = buffer,
         .index = if (std.mem.startsWith(u8, buffer, "\xef\xbb\xbf")) 3 else 0,
-        .line = 0,
         .features = .init(options.toml_version),
         .comment_tokens = options.comment_tokens,
         .whitespace_tokens = options.whitespace_tokens,
@@ -149,6 +148,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                 self.index += 1;
             },
             '"' => continue :state .string_start,
+            else => return error.NotImplemented,
         },
         .carriage_return => {
             self.index += 1;
@@ -307,6 +307,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                         '"' => self.index += 1,
                         '\\' => continue :state .string_backslash,
                         0x20...0x21, 0x23...0x5b, 0x5d...0x7e => continue :utf .start, // printable characters
+                        1...8, 0x0b...0x0c, 0x0e...0x1f, 0x7f => return self.fail(error.InvalidControlCharacter, null),
                         0xc2...0xdf => continue :utf .a,
                         0xe1...0xec, 0xee...0xef => continue :utf .b,
                         0xe0 => continue :utf .c,
@@ -445,6 +446,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                 else => return self.fail(error.InvalidEscapeSequence, null),
             }
         },
+        .multiline_string => return error.NotImplemented,
     }
 
     result.loc.end = self.index;
@@ -476,6 +478,7 @@ fn fail(self: Tokenizer, err: Error, msg: ?[]const u8) Error {
             .message = if (msg) |m| m else switch (err) {
                 error.InvalidControlCharacter => "invalid control character",
                 error.InvalidEscapeSequence => "invalid escape sequence",
+                error.UnterminatedString => "unterminated string literal",
                 error.InvalidUtf8 => "invalid UTF-8 sequence",
                 error.NotImplemented, error.Reported => unreachable,
             },

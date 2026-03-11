@@ -11,4 +11,4 @@ column: usize = 0,
 snippet: []const u8 = "",
 message: []const u8 = "",
 
-pub const Error = error.Reported;
+pub const Error = error{Reported};
