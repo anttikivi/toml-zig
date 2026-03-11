@@ -9,6 +9,10 @@
 //! However, it validates that the input buffer is a well-formed code-unit
 //! sequence as per Unicode specification. If it encounters an invalid Unicode
 //! sequence, it returns an error.
+//!
+//! Additionally, the Tokenizer returns tokens unaware of the current TOML
+//! context. It must be paired with a receiving parser. The parser must ensure
+//! that it parses the produced tokens according to the current context.
 
 const Tokenizer = @This();
 
@@ -110,7 +114,11 @@ pub fn init(buffer: []const u8, options: Options) Tokenizer {
     };
 }
 
-/// Returns the next token from the input buffer.
+/// Returns the next token from the input buffer. This function is not aware of
+/// the current TOML context, and it is left for the parser to interpret
+/// the produced tokens according to the correct context. The most notable
+/// example of this is that when a TOML document contains bare keys separated by
+/// dots, this function returns them as the single literal token.
 pub fn next(self: *Tokenizer) Error!Token {
     var result: Token = .{
         .tag = undefined,
