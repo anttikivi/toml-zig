@@ -285,7 +285,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                 self.buffer[self.index + 1] == '"' and
                 self.buffer[self.index + 2] == '"')
             {
-                continue :state .multiline_string;
+                continue :state .multiline_string_start;
             }
 
             result.tag = .string;
@@ -655,7 +655,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                 self.buffer[self.index + 1] == '\'' and
                 self.buffer[self.index + 2] == '\'')
             {
-                continue :state .multiline_literal_string;
+                continue :state .multiline_literal_string_start;
             }
 
             result.tag = .literal_string;
