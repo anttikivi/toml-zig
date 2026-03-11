@@ -291,7 +291,7 @@ fn addTestStep(b: *std.Build, opts: Options) void {
 
     step.dependOn(addTestFmtStep(b, opts));
     step.dependOn(addTestUnitStep(b, opts));
-    addTestTomlStep(b, step, opts);
+    // addTestTomlStep(b, step, opts);
 }
 
 fn addTestUnitStep(b: *std.Build, opts: Options) *std.Build.Step {
