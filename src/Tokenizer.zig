@@ -35,10 +35,11 @@ pub const Options = struct {
     diagnostics: ?*Diagnostics = null,
 };
 
-const Error = Diagnostics.Error || error{NotImplemented} || error{
+const Error = Diagnostics.Error || error{
     InvalidControlCharacter,
     InvalidEscapeSequence,
     InvalidUtf8,
+    UnexpectedToken,
     UnterminatedString,
 };
 
@@ -54,6 +55,8 @@ pub const Token = struct {
     pub const Tag = enum {
         comment,
         whitespace,
+
+        literal,
 
         string,
         multiline_string,
@@ -83,6 +86,7 @@ const State = enum {
     whitespace,
     left_bracket,
     right_bracket,
+    literal,
     string_start,
     string,
     string_backslash,
@@ -158,7 +162,8 @@ pub fn next(self: *Tokenizer) Error!Token {
             },
             '"' => continue :state .string_start,
             '\'' => continue :state .literal_string_start,
-            else => return error.NotImplemented,
+            '+', '-', '0'...'9', 'A'...'Z', '_', 'a'...'z' => continue :state .literal,
+            else => return self.fail(error.UnexpectedToken, null),
         },
         .carriage_return => {
             self.index += 1;
@@ -266,6 +271,16 @@ pub fn next(self: *Tokenizer) Error!Token {
                     result.loc.start = self.index;
                     continue :state .start;
                 },
+            }
+        },
+        .literal => {
+            assert(self.index < self.buffer.len);
+
+            result.tag = .literal;
+            self.index += 1;
+            switch (self.nextByte()) {
+                '+', '-', '.', '0'...'9', ':', 'A'...'Z', '_', 'a'...'z' => continue :state .literal,
+                else => {}, // return
             }
         },
         .left_bracket => {
@@ -887,9 +902,10 @@ fn fail(self: Tokenizer, err: Error, msg: ?[]const u8) Error {
             .message = if (msg) |m| m else switch (err) {
                 error.InvalidControlCharacter => "invalid control character",
                 error.InvalidEscapeSequence => "invalid escape sequence",
-                error.UnterminatedString => "unterminated string literal",
                 error.InvalidUtf8 => "invalid UTF-8 sequence",
-                error.NotImplemented, error.Reported => unreachable,
+                error.UnexpectedToken => "unexpected token",
+                error.UnterminatedString => "unterminated string literal",
+                error.Reported => unreachable,
             },
         };
 
@@ -1104,6 +1120,421 @@ const next_test_cases: []const NextTestCase = &.{
             },
         },
         .whitespace_tokens = true,
+    },
+    .{
+        .buffer = "key",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 3, .end = 3 },
+            },
+        },
+    },
+    .{
+        .buffer = "bare-key",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 8 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 8, .end = 8 },
+            },
+        },
+    },
+    .{
+        .buffer = "a.b.c",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 5 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 5, .end = 5 },
+            },
+        },
+    },
+    .{
+        .buffer = "12345",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 5 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 5, .end = 5 },
+            },
+        },
+    },
+    .{
+        .buffer = "+99",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 3, .end = 3 },
+            },
+        },
+    },
+    .{
+        .buffer = "-17",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 3, .end = 3 },
+            },
+        },
+    },
+    .{
+        .buffer = "1_000",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 5 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 5, .end = 5 },
+            },
+        },
+    },
+    .{
+        .buffer = "3.1415",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 6 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 6, .end = 6 },
+            },
+        },
+    },
+    .{
+        .buffer = "1e+06",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 5 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 5, .end = 5 },
+            },
+        },
+    },
+    .{
+        .buffer = "0xDEADBEEF",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 10 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 10, .end = 10 },
+            },
+        },
+    },
+    .{
+        .buffer = "true",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 4 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 4, .end = 4 },
+            },
+        },
+    },
+    .{
+        .buffer = "false",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 5 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 5, .end = 5 },
+            },
+        },
+    },
+    .{
+        .buffer = "+inf",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 4 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 4, .end = 4 },
+            },
+        },
+    },
+    .{
+        .buffer = "nan",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 3, .end = 3 },
+            },
+        },
+    },
+    .{
+        .buffer = "1979-05-27",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 10 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 10, .end = 10 },
+            },
+        },
+    },
+    .{
+        .buffer = "07:32:00",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 8 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 8, .end = 8 },
+            },
+        },
+    },
+    .{
+        .buffer = "1979-05-27T07:32:00Z",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 20 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 20, .end = 20 },
+            },
+        },
+    },
+    .{
+        .buffer = "1979-05-27T07:32:00.999999-07:00",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 32 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 32, .end = 32 },
+            },
+        },
+    },
+    .{
+        .buffer = "key=value",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 3, .end = 4 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 4, .end = 9 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 9, .end = 9 },
+            },
+        },
+    },
+    .{
+        .buffer = "[table]",
+        .tokens = &.{
+            .{
+                .tag = .left_bracket,
+                .loc = .{ .start = 0, .end = 1 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 1, .end = 6 },
+            },
+            .{
+                .tag = .right_bracket,
+                .loc = .{ .start = 6, .end = 7 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 7, .end = 7 },
+            },
+        },
+    },
+    .{
+        .buffer = "[[products]]",
+        .tokens = &.{
+            .{
+                .tag = .double_left_bracket,
+                .loc = .{ .start = 0, .end = 2 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 2, .end = 10 },
+            },
+            .{
+                .tag = .double_right_bracket,
+                .loc = .{ .start = 10, .end = 12 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 12, .end = 12 },
+            },
+        },
+    },
+    .{
+        .buffer = "{foo=bar}",
+        .tokens = &.{
+            .{
+                .tag = .left_brace,
+                .loc = .{ .start = 0, .end = 1 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 1, .end = 4 },
+            },
+            .{
+                .tag = .equal,
+                .loc = .{ .start = 4, .end = 5 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 5, .end = 8 },
+            },
+            .{
+                .tag = .right_brace,
+                .loc = .{ .start = 8, .end = 9 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 9, .end = 9 },
+            },
+        },
+    },
+    .{
+        .buffer = "[true,false]",
+        .tokens = &.{
+            .{
+                .tag = .left_bracket,
+                .loc = .{ .start = 0, .end = 1 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 1, .end = 5 },
+            },
+            .{
+                .tag = .comma,
+                .loc = .{ .start = 5, .end = 6 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 6, .end = 11 },
+            },
+            .{
+                .tag = .right_bracket,
+                .loc = .{ .start = 11, .end = 12 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 12, .end = 12 },
+            },
+        },
+    },
+    .{
+        .buffer = "key # note\n",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 10, .end = 11 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 11, .end = 11 },
+            },
+        },
+    },
+    .{
+        .buffer = "key # note\n",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .comment,
+                .loc = .{ .start = 4, .end = 10 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 10, .end = 11 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 11, .end = 11 },
+            },
+        },
+        .comment_tokens = true,
+    },
+    .{
+        .buffer = "key\nvalue",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 3, .end = 4 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 4, .end = 9 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 9, .end = 9 },
+            },
+        },
     },
     .{
         .buffer = "\"x\" \t\"hello\"\n",
