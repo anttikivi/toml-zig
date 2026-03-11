@@ -476,7 +476,8 @@ pub fn next(self: *Tokenizer) Error!Token {
                             self.buffer[self.index + 1] == '"' and
                             self.buffer[self.index + 2] == '"')
                         {
-                            self.index += 2;
+                            self.index += 3;
+                            break :utf;
                         } else {
                             continue :utf .start;
                         },
@@ -769,7 +770,8 @@ pub fn next(self: *Tokenizer) Error!Token {
                             self.buffer[self.index + 1] == '\'' and
                             self.buffer[self.index + 2] == '\'')
                         {
-                            self.index += 2;
+                            self.index += 3;
+                            break :utf;
                         } else {
                             continue :utf .start;
                         },
@@ -907,6 +909,301 @@ const next_test_cases: []const NextTestCase = &.{
                     .start = 1,
                     .end = 1,
                 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"hello\"",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 7 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 7, .end = 7 },
+            },
+        },
+    },
+    .{
+        .buffer = "'hello'",
+        .tokens = &.{
+            .{
+                .tag = .literal_string,
+                .loc = .{ .start = 0, .end = 7 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 7, .end = 7 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"\"\"\"\"\"",
+        .tokens = &.{
+            .{
+                .tag = .multiline_string,
+                .loc = .{ .start = 0, .end = 6 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 6, .end = 6 },
+            },
+        },
+    },
+    .{
+        .buffer = "''' '''",
+        .tokens = &.{
+            .{
+                .tag = .multiline_literal_string,
+                .loc = .{ .start = 0, .end = 7 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 7, .end = 7 },
+            },
+        },
+    },
+    .{
+        .buffer =
+        \\"""
+        \\first
+        \\second
+        \\"""
+        ,
+        .tokens = &.{
+            .{
+                .tag = .multiline_string,
+                .loc = .{ .start = 0, .end = 20 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 20, .end = 20 },
+            },
+        },
+    },
+    .{
+        .buffer =
+        \\'''
+        \\first
+        \\second
+        \\'''
+        ,
+        .tokens = &.{
+            .{
+                .tag = .multiline_literal_string,
+                .loc = .{ .start = 0, .end = 20 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 20, .end = 20 },
+            },
+        },
+    },
+    .{
+        .buffer = "\r\n",
+        .tokens = &.{
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 0, .end = 2 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 2, .end = 2 },
+            },
+        },
+    },
+    .{
+        .buffer = "#a\n#b\n",
+        .tokens = &.{
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 3, .end = 6 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 6, .end = 6 },
+            },
+        },
+    },
+    .{
+        .buffer = "#a\n#b\n",
+        .tokens = &.{
+            .{
+                .tag = .comment,
+                .loc = .{ .start = 0, .end = 2 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 2, .end = 3 },
+            },
+            .{
+                .tag = .comment,
+                .loc = .{ .start = 3, .end = 5 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 5, .end = 6 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 6, .end = 6 },
+            },
+        },
+        .comment_tokens = true,
+    },
+    .{
+        .buffer = "\"x\"#note\n\"hello\"\n",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 3, .end = 9 },
+            },
+            .{
+                .tag = .string,
+                .loc = .{ .start = 9, .end = 16 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 16, .end = 17 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 17, .end = 17 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"x\"#note\n",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 3, .end = 9 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 9, .end = 9 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"x\"#note\n",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 3 },
+            },
+            .{
+                .tag = .comment,
+                .loc = .{ .start = 3, .end = 8 },
+            },
+            .{
+                .tag = .newline,
+                .loc = .{ .start = 8, .end = 9 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 9, .end = 9 },
+            },
+        },
+        .comment_tokens = true,
+    },
+    .{
+        .buffer = "\"\\n\"",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 4 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 4, .end = 4 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"\\t\"",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 4 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 4, .end = 4 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"\\\"\"",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 4 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 4, .end = 4 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"\\\\\"",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 4 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 4, .end = 4 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"emoji \xf0\x9f\x98\x80\"",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 12 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 12, .end = 12 },
+            },
+        },
+    },
+    .{
+        .buffer = "\"emoji 😀\"",
+        .tokens = &.{
+            .{
+                .tag = .string,
+                .loc = .{ .start = 0, .end = 12 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 12, .end = 12 },
+            },
+        },
+    },
+    .{
+        .buffer = "",
+        .tokens = &.{
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 0, .end = 0 },
             },
         },
     },
