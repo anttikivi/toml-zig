@@ -8,6 +8,12 @@
 /// The default TOML version used by the library.
 pub const default_version: Version = .@"1.1.0";
 
+/// Integer type used by this TOML implementation.
+pub const Int = i64;
+
+/// Float type used by this TOML implementation.
+pub const Float = f64;
+
 /// TOML versions that this parser supports.
 pub const Version = enum {
     @"1.1.0",
@@ -17,9 +23,10 @@ pub const Version = enum {
 /// Configuration of TOML features added after version 1.0.0. It is used
 /// internally by the library while parsing to check which features are allowed
 /// based on the selected TOML version.
-pub const Features = packed struct {
+pub const Features = struct {
     escape_e: bool = false,
     escape_xhh: bool = false,
+    optional_seconds: bool = false,
 
     const Self = @This();
 
@@ -29,6 +36,7 @@ pub const Features = packed struct {
             .@"1.1.0" => .{
                 .escape_e = true,
                 .escape_xhh = true,
+                .optional_seconds = true,
             },
         };
     }

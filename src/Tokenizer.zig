@@ -1359,6 +1359,23 @@ const next_test_cases: []const NextTestCase = &.{
         },
     },
     .{
+        .buffer = "1979-05-27 07:32:00Z",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 10 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 11, .end = 20 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 20, .end = 20 },
+            },
+        },
+    },
+    .{
         .buffer = "1979-05-27T07:32:00.999999-07:00",
         .tokens = &.{
             .{
