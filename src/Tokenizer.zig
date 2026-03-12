@@ -20,6 +20,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const Diagnostics = @import("root.zig").Diagnostics;
+const Position = @import("root.zig").Position;
 const Utf8State = @import("root.zig").Utf8State;
 const default_version = @import("toml.zig").default_version;
 const Features = @import("toml.zig").Features;
@@ -75,7 +76,7 @@ pub const Token = struct {
     };
 };
 
-const Error = Diagnostics.Error || error{
+pub const Error = Diagnostics.Error || error{
     InvalidControlCharacter,
     InvalidEscapeSequence,
     InvalidUtf8,
@@ -885,6 +886,20 @@ pub fn next(self: *Tokenizer) Error!Token {
     return result;
 }
 
+/// Get the current position for diagnostics.
+pub fn position(self: Tokenizer) Position {
+    const line_number = 1 + std.mem.countScalar(u8, self.buffer[0..self.index], '\n');
+    const prev_newline = std.mem.findScalarLast(u8, self.buffer[0..self.index], '\n');
+    const start = if (prev_newline) |i| i + 1 else 0;
+    const end = std.mem.findScalarPos(u8, self.buffer, self.index, '\n') orelse self.buffer.len;
+
+    return .{
+        .line_number = line_number,
+        .column = (self.index - start) + 1,
+        .snippet = self.buffer[start..end],
+    };
+}
+
 fn nextByte(self: Tokenizer) u8 {
     if (self.index >= self.buffer.len) {
         return 0;
@@ -894,19 +909,11 @@ fn nextByte(self: Tokenizer) u8 {
 }
 
 fn fail(self: Tokenizer, err: Error, msg: ?[]const u8) Error {
-    assert(err != error.NotImplemented);
     assert(err != error.Reported);
 
     if (self.diagnostics) |diag| {
-        const line_number = 1 + std.mem.countScalar(u8, self.buffer[0..self.index], '\n');
-        const prev_newline = std.mem.findScalarLast(u8, self.buffer[0..self.index], '\n');
-        const start = if (prev_newline) |i| i + 1 else 0;
-        const end = std.mem.findScalarPos(u8, self.buffer, self.index, '\n') orelse self.buffer.len;
-
         diag.* = .{
-            .line_number = line_number,
-            .column = (self.index - start) + 1,
-            .snippet = self.buffer[start..end],
+            .position = self.position(),
             .message = if (msg) |m| m else switch (err) {
                 error.InvalidControlCharacter => "invalid control character",
                 error.InvalidEscapeSequence => "invalid escape sequence",

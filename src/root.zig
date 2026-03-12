@@ -13,13 +13,25 @@ pub const default_version = @import("toml.zig").default_version;
 pub const Features = @import("toml.zig").Features;
 pub const Version = @import("toml.zig").Version;
 
+/// Optional diagnostics for the TOML parser. To enable diagnostics, declare
+/// `var diagnostics: Diagnostics = .{};` and then pass it into the library
+/// component with the appropriate options:
+/// `const options: Options = .{ .diagnostics = &diagnostics };`.
+///
+/// When the diagnostics option is set, it will be populated whenever an error occurs during the parsing.
 pub const Diagnostics = struct {
-    line_number: usize = 1,
-    column: usize = 0,
-    snippet: []const u8 = "",
+    position: Position = .{},
     message: []const u8 = "",
 
     pub const Error = error{Reported};
+};
+
+/// Stores the position where an error has occured as accurately as possible for
+/// diagnostics.
+pub const Position = struct {
+    line_number: usize = 1,
+    column: usize = 0,
+    snippet: []const u8 = "",
 };
 
 /// State type used internally by the library in the UTF-8 validation algorithm.
