@@ -1,5 +1,23 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "customDatasources": {
+    "zig-master": {
+      "defaultRegistryUrlTemplate": "https://ziglang.org/download/index.json",
+      "format": "json",
+      "transformTemplates": ["{\"releases\":[{\"version\": master.version}]}"]
+    }
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Update Zig master version in `build.zig.zon`",
+      "fileMatch": ["^build\\.zig\\.zon$"],
+      "matchStrings": ["\\.minimum_zig_version\\s*=\\s*\"(?<currentValue>[^\"]+)\""],
+      "depNameTemplate": "zig-master",
+      "datasourceTemplate": "custom.zig-master",
+      "versioningTemplate": "semver"
+    }
+  ],
   "packageRules": [
     {
       "matchPackageNames": ["macos", "ubuntu", "windows"],
