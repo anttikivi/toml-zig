@@ -17,7 +17,7 @@ const Version = @import("toml.zig").Version;
 
 state: State = .table,
 token: ?Token = null,
-tokenizer: *Tokenizer,
+tokenizer: Tokenizer,
 features: Features,
 diagnostics: ?*Diagnostics,
 
@@ -33,8 +33,10 @@ pub const Item = struct {
     pub const Tag = enum {
         table_header_start,
         table_header_end,
-        /// Bare key used in a table header.
+        /// Key used in a table header.
         table_key,
+        /// Key before a value.
+        key,
     };
 
     pub const Value = union(enum) {
@@ -53,6 +55,7 @@ pub const Item = struct {
 pub const Error = Diagnostics.Error || Tokenizer.Error || error{
     InvalidCharacter,
     InvalidState,
+    UnexpectedEnd,
     UnterminatedHeader,
 };
 
@@ -61,11 +64,17 @@ const State = enum {
     table,
     table_header,
     table_header_incomplete,
+    key,
+    key_incomplete,
+    value_start,
 };
 
-pub fn init(tokenizer: *Tokenizer, options: Options) Parser {
+pub fn init(input: []const u8, options: Options) Parser {
     return .{
-        .tokenizer = tokenizer,
+        .tokenizer = .init(input, .{
+            .toml_version = options.toml_version,
+            .diagnostics = options.diagnostics,
+        }),
         .features = .init(options.toml_version),
         .diagnostics = options.diagnostics,
     };
@@ -92,6 +101,11 @@ pub fn next(self: *Parser) Error!?Item {
                     self.state = .table_header_incomplete;
                     self.token = null;
                     result.tag = .table_header_start;
+                },
+                .literal, .string, .literal_string => {
+                    self.state = .key_incomplete;
+                    self.token = token;
+                    continue :state .key_incomplete;
                 },
                 else => return self.fail(error.UnexpectedToken, null),
             }
@@ -172,6 +186,89 @@ pub fn next(self: *Parser) Error!?Item {
                 else => return self.fail(error.UnexpectedToken, "table header not terminated"),
             }
         },
+        .key, .key_incomplete => {
+            if (self.token == null) {
+                self.token = try self.tokenizer.next();
+            }
+
+            switch (self.token.?.tag) {
+                .end_of_file => return self.fail(error.UnexpectedEnd, null),
+                .dot => {
+                    if (self.state == .key_incomplete) {
+                        return self.fail(error.UnexpectedToken, null);
+                    }
+                    self.state = .key_incomplete;
+                    self.token = null;
+                    continue :state .key_incomplete;
+                },
+                .equal => {
+                    if (self.state == .key_incomplete) {
+                        return self.fail(error.UnexpectedToken, null);
+                    }
+                    self.state = .value_start;
+                    self.token = null;
+                    continue :state .value_start;
+                },
+                .literal => {
+                    result.tag = .key;
+
+                    const start = self.token.?.loc.start;
+
+                    if (self.state == .key_incomplete and self.tokenizer.buffer[start] == '.') {
+                        return self.fail(error.UnexpectedToken, null);
+                    }
+
+                    var end = start;
+
+                    while (end < self.token.?.loc.end) : (end += 1) {
+                        const c = self.tokenizer.buffer[end];
+                        if (!isBareKey(c)) {
+                            switch (c) {
+                                '.' => {
+                                    self.state = .key_incomplete;
+                                    self.token.?.loc.start = end + 1;
+                                    break;
+                                },
+                                else => return self.fail(error.InvalidCharacter, null),
+                            }
+                        }
+                    }
+
+                    if (end == self.token.?.loc.end or self.token.?.loc.start == self.token.?.loc.end) {
+                        if (self.tokenizer.buffer[end] != '.') {
+                            self.state = .key;
+                        }
+                        self.token = null;
+                    }
+
+                    result.value = .{ .literal = self.tokenizer.buffer[start..end] };
+                },
+                .string => {
+                    self.state = .key;
+                    result.tag = .key;
+                    result.value = .{
+                        .string = self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end],
+                    };
+                    self.token = null;
+                },
+                .literal_string => {
+                    self.state = .key;
+                    result.tag = .key;
+                    result.value = .{
+                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end],
+                    };
+                    self.token = null;
+                },
+                else => return self.fail(error.UnexpectedToken, "key not terminated"),
+            }
+        },
+        .value_start => {
+            self.token = try self.tokenizer.next();
+
+            switch (self.token) {
+                .string => {},
+            }
+        },
     }
 
     return result;
@@ -196,6 +293,7 @@ fn fail(self: Parser, err: Error, msg: ?[]const u8) Error {
                 error.InvalidEscapeSequence => "invalid escape sequence",
                 error.InvalidState => "invalid parser state",
                 error.InvalidUtf8 => "invalid UTF-8 sequence",
+                error.UnexpectedEnd => "unexpected end of input",
                 error.UnexpectedToken => "unexpected token",
                 error.UnterminatedHeader => "unterminated table header",
                 error.UnterminatedString => "unterminated string literal",
@@ -219,6 +317,7 @@ const TestItem = struct {
         table_header_start,
         table_header_end,
         table_key,
+        key,
     };
 
     pub const Value = union(enum) {
@@ -707,6 +806,18 @@ const next_test_cases: []const NextTestCase = &.{
             },
         },
     },
+    // .{
+    //     .buffer = "a =",
+    //     .items = &.{
+    //         .{
+    //             .tag = .key,
+    //             .value = .{
+    //                 .literal = "a",
+    //             },
+    //         },
+    //         null,
+    //     },
+    // },
 };
 
 fn convertItem(src: ?Item) ?TestItem {
@@ -756,8 +867,7 @@ test next {
         errdefer std.debug.print("collected items: {s}\n", .{items.items});
         errdefer std.debug.print("failing test case: {s}\n", .{case.buffer});
 
-        var tokenizer: Tokenizer = .init(case.buffer, .{ .toml_version = case.toml_version });
-        var parser = init(&tokenizer, .{ .toml_version = case.toml_version });
+        var parser = init(case.buffer, .{ .toml_version = case.toml_version });
 
         for (case.items) |expected| {
             if (expected == null) {
