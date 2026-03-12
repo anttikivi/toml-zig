@@ -2169,11 +2169,36 @@ const next_test_cases: []const NextTestCase = &.{
             },
         },
     },
+    .{
+        .buffer = "a.\"b\".c",
+        .tokens = &.{
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 0, .end = 2 },
+            },
+            .{
+                .tag = .string,
+                .loc = .{ .start = 2, .end = 5 },
+            },
+            .{
+                .tag = .dot,
+                .loc = .{ .start = 5, .end = 6 },
+            },
+            .{
+                .tag = .literal,
+                .loc = .{ .start = 6, .end = 7 },
+            },
+            .{
+                .tag = .end_of_file,
+                .loc = .{ .start = 7, .end = 7 },
+            },
+        },
+    },
 };
 
 test next {
     for (next_test_cases) |case| {
-        var tokenizer: Tokenizer = .init(case.buffer, .{
+        var tokenizer = init(case.buffer, .{
             .toml_version = case.toml_version,
             .comment_tokens = case.comment_tokens,
             .whitespace_tokens = case.whitespace_tokens,
