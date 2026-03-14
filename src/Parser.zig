@@ -28,9 +28,12 @@ const Version = @import("toml.zig").Version;
 
 state: State = .table,
 token: ?Token = null,
+nesting: Stack(enum { array, inline_table }, max_nesting),
 tokenizer: Tokenizer,
 features: Features,
 diagnostics: ?*Diagnostics,
+
+const max_nesting = 128;
 
 pub const Options = struct {
     toml_version: Version = default_version,
@@ -49,6 +52,8 @@ pub const Item = struct {
         /// Key before a value.
         key,
         value,
+        array_start,
+        array_end,
     };
 
     pub const Value = union(enum) {
@@ -113,7 +118,45 @@ pub const State = enum {
     key,
     key_incomplete,
     value_start,
+    value_end,
 };
+
+/// Stack for storing the current nesting status of the parser when inside
+/// arrays and inline tables.
+fn Stack(comptime T: type, comptime c: usize) type {
+    return struct {
+        buf: [c]T = undefined,
+        len: usize = 0,
+
+        const Self = @This();
+
+        fn push(self: *Self, v: T) error{Overflow}!void {
+            if (self.len >= c) {
+                return error.Overflow;
+            }
+
+            self.buf[self.len] = v;
+            self.len += 1;
+        }
+
+        fn pop(self: *Self) ?T {
+            if (self.len == 0) {
+                return null;
+            }
+
+            self.len -= 1;
+            return self.buf[self.len];
+        }
+
+        fn top(self: *const Self) ?T {
+            if (self.len == 0) {
+                return null;
+            }
+
+            return self.buf[self.len - 1];
+        }
+    };
+}
 
 pub fn init(input: []const u8, options: Options) Parser {
     return .{
@@ -121,6 +164,7 @@ pub fn init(input: []const u8, options: Options) Parser {
             .toml_version = options.toml_version,
             .diagnostics = options.diagnostics,
         }),
+        .nesting = .{},
         .features = .init(options.toml_version),
         .diagnostics = options.diagnostics,
     };
@@ -134,10 +178,7 @@ pub fn next(self: *Parser) Error!?Item {
     errdefer self.state = .invalid;
     errdefer self.token = null;
 
-    var result: Item = .{
-        .tag = undefined,
-        .value = null,
-    };
+    var result: Item = .{ .tag = undefined };
 
     state: switch (self.state) {
         .invalid => return self.fail(error.InvalidState, null),
@@ -146,9 +187,12 @@ pub fn next(self: *Parser) Error!?Item {
                 self.token = self.token orelse try self.tokenizer.next();
             }
 
+            assert(self.nesting.len == 0);
+
             switch (self.token.?.tag) {
                 .end_of_file => {
                     self.token = null;
+                    assert(self.nesting.len == 0);
                     return null;
                 },
                 .newline => {
@@ -320,11 +364,81 @@ pub fn next(self: *Parser) Error!?Item {
             }
         },
         .value_start => {
-            self.token = try self.tokenizer.next();
+            if (self.token == null) {
+                self.token = try self.tokenizer.next();
+            }
 
             switch (self.token.?.tag) {
+                .newline => {
+                    if (self.nesting.top()) |nest| {
+                        switch (nest) {
+                            .array => {
+                                self.token = null;
+                                continue :state .value_start;
+                            },
+                            .inline_table => return self.fail(error.UnexpectedToken, null),
+                        }
+                    }
+
+                    return self.fail(error.UnexpectedToken, null);
+                },
+                .double_left_bracket => {
+                    self.state = .value_start;
+                    result.tag = .array_start;
+                    self.token.?.tag = .left_bracket;
+                    self.token.?.loc.start += 1;
+                    self.nesting.push(.array) catch |err| return self.printFail(
+                        err,
+                        "exceeded maximum nesting level {d}",
+                        .{max_nesting},
+                    );
+                },
+                .left_bracket => {
+                    self.state = .value_start;
+                    result.tag = .array_start;
+                    self.token = null;
+                    self.nesting.push(.array) catch |err| return self.printFail(
+                        err,
+                        "exceeded maximum nesting level {d}",
+                        .{max_nesting},
+                    );
+                },
+                .double_right_bracket => {
+                    if (self.nesting.top()) |nest| {
+                        switch (nest) {
+                            .array => {
+                                self.state = .value_end;
+                                self.token.?.tag = .right_bracket;
+                                self.token.?.loc.start += 1;
+                                assert(self.nesting.pop().? == .array);
+                                result.tag = .array_end;
+                                break :state;
+                            },
+                            .inline_table => {}, // TODO:
+                        }
+                    }
+
+                    return self.fail(error.UnexpectedToken, null);
+                },
+                .right_bracket => {
+                    if (self.nesting.top()) |nest| {
+                        switch (nest) {
+                            .array => {
+                                self.state = .value_end;
+                                self.token = null;
+                                assert(self.nesting.pop().? == .array);
+                                result.tag = .array_end;
+                            },
+                            .inline_table => return self.fail(error.UnexpectedToken, null),
+                        }
+
+                        break :state;
+                    }
+
+                    return self.fail(error.UnexpectedToken, "array not closed");
+                },
                 .string => {
-                    self.state = .table;
+                    self.state = .value_end;
                     result.tag = .value;
                     result.value = .{
                         .string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
@@ -332,7 +446,7 @@ pub fn next(self: *Parser) Error!?Item {
                     self.token = null;
                 },
                 .multiline_string => {
-                    self.state = .table;
+                    self.state = .value_end;
                     result.tag = .value;
                     result.value = .{
                         .multiline_string = self.tokenizer.buffer[self.token.?.loc.start + 3 .. self.token.?.loc.end - 3],
@@ -340,7 +454,7 @@ pub fn next(self: *Parser) Error!?Item {
                     self.token = null;
                 },
                 .literal_string => {
-                    self.state = .table;
+                    self.state = .value_end;
                     result.tag = .value;
                     result.value = .{
                         .literal_string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
@@ -348,7 +462,7 @@ pub fn next(self: *Parser) Error!?Item {
                     self.token = null;
                 },
                 .multiline_literal_string => {
-                    self.state = .table;
+                    self.state = .value_end;
                     result.tag = .value;
                     result.value = .{
                         .multiline_literal_string = self.tokenizer.buffer[self.token.?.loc.start + 3 .. self.token.?.loc.end - 3],
@@ -356,6 +470,10 @@ pub fn next(self: *Parser) Error!?Item {
                     self.token = null;
                 },
                 .literal => {
+                    // TODO: Consider if the parsing (up until floats) could be
+                    // done using a single loop through the characters in
+                    // the buffer.
+                    self.state = .value_end;
                     result.tag = .value;
 
                     var buf = self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end];
@@ -366,48 +484,36 @@ pub fn next(self: *Parser) Error!?Item {
                     }
 
                     if (std.mem.eql(u8, buf, "true")) {
-                        self.state = .table;
-                        result.tag = .value;
                         result.value = .{ .boolean = true };
                         self.token = null;
                         break :state;
                     }
 
                     if (std.mem.eql(u8, buf, "false")) {
-                        self.state = .table;
-                        result.tag = .value;
                         result.value = .{ .boolean = false };
                         self.token = null;
                         break :state;
                     }
 
                     if (std.mem.eql(u8, buf, "inf") or std.mem.eql(u8, buf, "+inf")) {
-                        self.state = .table;
-                        result.tag = .value;
                         result.value = .{ .float = std.math.inf(Float) };
                         self.token = null;
                         break :state;
                     }
 
                     if (std.mem.eql(u8, buf, "-inf")) {
-                        self.state = .table;
-                        result.tag = .value;
                         result.value = .{ .float = -std.math.inf(Float) };
                         self.token = null;
                         break :state;
                     }
 
                     if (std.mem.eql(u8, buf, "nan") or std.mem.eql(u8, buf, "+nan")) {
-                        self.state = .table;
-                        result.tag = .value;
                         result.value = .{ .float = std.math.nan(Float) };
                         self.token = null;
                         break :state;
                     }
 
                     if (std.mem.eql(u8, buf, "-nan")) {
-                        self.state = .table;
-                        result.tag = .value;
                         result.value = .{ .float = -std.math.nan(Float) };
                         self.token = null;
                         break :state;
@@ -420,8 +526,6 @@ pub fn next(self: *Parser) Error!?Item {
                         std.ascii.isDigit(buf[3]) and
                         buf[4] == '-')
                     {
-                        self.state = .table;
-                        result.tag = .value;
                         result.value = self.parseDatetime(buf) catch |err| return switch (err) {
                             error.Reported => err,
                             else => self.fail(err, null),
@@ -436,8 +540,6 @@ pub fn next(self: *Parser) Error!?Item {
                         std.ascii.isDigit(buf[4]) and
                         buf[2] == ':')
                     {
-                        self.state = .table;
-                        result.tag = .value;
                         result.value = self.parseTime(buf) catch |err| return switch (err) {
                             error.Reported => err,
                             else => self.fail(err, null),
@@ -445,16 +547,150 @@ pub fn next(self: *Parser) Error!?Item {
                         break :state;
                     }
 
-                    self.state = .table;
-                    result.tag = .value;
                     result.value = self.parseNumber(buf) catch |err| return switch (err) {
                         error.Reported => err,
                         else => self.fail(err, null),
                     };
-
-                    // break :state;
                 },
-                // TODO: inline array and table start.
+                // TODO: inline table start.
+                else => return self.fail(error.UnexpectedToken, null),
+            }
+        },
+        .value_end => {
+            if (self.token == null) {
+                self.token = try self.tokenizer.next();
+            }
+
+            switch (self.token.?.tag) {
+                .end_of_file => {
+                    if (self.nesting.top()) |nest| {
+                        switch (nest) {
+                            .array => return self.fail(error.UnexpectedEnd, "array not closed"),
+                            .inline_table => return self.fail(error.UnexpectedEnd, "inline table not closed"),
+                        }
+                    }
+
+                    self.token = null;
+                    assert(self.nesting.len == 0);
+                    return null;
+                },
+                .newline => {
+                    if (self.nesting.top()) |nest| {
+                        switch (nest) {
+                            .array => {
+                                // When inside array, a newline is allowed if
+                                // the array is terminated after that.
+                                self.token = try self.tokenizer.next();
+                                retry: switch (self.token.?.tag) {
+                                    .double_right_bracket => {
+                                        self.state = .value_end;
+                                        self.token.?.tag = .right_bracket;
+                                        self.token.?.loc.start += 1;
+                                        assert(self.nesting.pop().? == .array);
+                                        result.tag = .array_end;
+                                    },
+                                    .right_bracket => {
+                                        self.state = .table;
+                                        self.token = null;
+                                        assert(self.nesting.pop().? == .array);
+                                        result.tag = .array_end;
+                                    },
+                                    .newline => {
+                                        self.token = try self.tokenizer.next();
+                                        continue :retry self.token.?.tag;
+                                    },
+                                    else => return self.fail(error.UnexpectedToken, "array not closed"),
+                                }
+                            },
+                            .inline_table => {}, // TODO:
+                        }
+
+                        break :state;
+                    }
+
+                    self.state = .table;
+                    self.token = null;
+                    continue :state .table;
+                },
+                .double_right_bracket => {
+                    if (self.nesting.top()) |nest| {
+                        switch (nest) {
+                            .array => {
+                                self.state = .value_end;
+                                self.token.?.tag = .right_bracket;
+                                self.token.?.loc.start += 1;
+                                assert(self.nesting.pop().? == .array);
+                                result.tag = .array_end;
+                                break :state;
+                            },
+                            .inline_table => {}, // TODO:
+                        }
+                    }
+
+                    return self.fail(error.UnexpectedToken, null);
+                },
+                .right_bracket => {
+                    if (self.nesting.top()) |nest| {
+                        switch (nest) {
+                            .array => {
+                                self.state = .value_end;
+                                self.token = null;
+                                const n = self.nesting.pop().?;
+                                assert(n == .array);
+                                result.tag = .array_end;
+                                break :state;
+                            },
+                            .inline_table => {}, // TODO:
+                        }
+                    }
+
+                    return self.fail(error.UnexpectedToken, null);
+                },
+                .comma => {
+                    if (self.nesting.top()) |nest| {
+                        switch (nest) {
+                            .array => {
+                                self.token = try self.tokenizer.next();
+                                retry: switch (self.token.?.tag) {
+                                    .double_right_bracket => {
+                                        self.state = .table;
+                                        self.token.?.tag = .right_bracket;
+                                        self.token.?.loc.start += 1;
+                                        assert(self.nesting.pop().? == .array);
+                                        result.tag = .array_end;
+                                        break :state;
+                                    },
+                                    .right_bracket => {
+                                        self.state = .table;
+                                        self.token = null;
+                                        assert(self.nesting.pop().? == .array);
+                                        result.tag = .array_end;
+                                        break :state;
+                                    },
+                                    .newline => {
+                                        self.token = try self.tokenizer.next();
+                                        continue :retry self.token.?.tag;
+                                    },
+                                    .double_left_bracket,
+                                    .left_bracket,
+                                    .string,
+                                    .multiline_string,
+                                    .literal_string,
+                                    .multiline_literal_string,
+                                    .literal,
+                                    => {
+                                        self.state = .value_start;
+                                        continue :state .value_start;
+                                    },
+                                    else => return self.fail(error.UnexpectedToken, "array not closed"),
+                                }
+                            },
+                            .inline_table => {}, // TODO:
+                        }
+                    }
+
+                    return self.fail(error.UnexpectedToken, null);
+                },
                 else => return self.fail(error.UnexpectedToken, null),
             }
         },
@@ -844,6 +1080,11 @@ fn fail(self: Parser, err: Error, msg: ?[]const u8) Error {
     }
 
     return err;
+}
+
+fn printFail(self: Parser, err: Error, comptime fmt: []const u8, args: anytype) Error {
+    assert(err != error.Reported);
+    return self.fail(err, std.fmt.comptimePrint(fmt, args));
 }
 
 test {

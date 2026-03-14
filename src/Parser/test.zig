@@ -29,6 +29,8 @@ const TestItem = struct {
         table_key,
         key,
         value,
+        array_start,
+        array_end,
     };
 
     pub const Value = union(enum) {
@@ -52,14 +54,14 @@ const TestItem = struct {
                 @compileError("TestItem.Value may only be used in tests");
             }
 
-            try writer.print(".{{ .{t}: ", .{self});
-
             switch (self) {
-                .literal, .string, .literal_string => |s| try writer.print("{s}", .{s}),
+                .literal, .string, .literal_string => |s| {
+                    try writer.print(".{{ .{t}: ", .{self});
+                    try writer.print("{s}", .{s});
+                    try writer.writeAll(" }");
+                },
                 else => |v| try writer.print("{any}", .{v}),
             }
-
-            try writer.writeAll(" }");
         }
     };
 
@@ -72,13 +74,13 @@ const TestItem = struct {
     }
 };
 
-const NextTestCase = struct {
+const TestCase = struct {
     buffer: []const u8,
     items: []const ?TestItem,
     toml_version: Version = default_version,
 };
 
-const next_test_cases: []const NextTestCase = &.{
+const test_cases: []const TestCase = &.{
     .{
         .buffer = "",
         .items = &.{null},
@@ -87,6 +89,9 @@ const next_test_cases: []const NextTestCase = &.{
         .buffer = "",
         .items = &.{ null, null, null },
     },
+};
+
+const table_header_cases: []const TestCase = &.{
     .{
         .buffer = "[a]",
         .items = &.{
@@ -443,6 +448,9 @@ const next_test_cases: []const NextTestCase = &.{
             },
         },
     },
+};
+
+const key_value_cases: []const TestCase = &.{
     .{
         .buffer = "a = \"b\"",
         .items = &.{
@@ -883,6 +891,9 @@ const next_test_cases: []const NextTestCase = &.{
             },
         },
     },
+};
+
+const bool_cases: []const TestCase = &.{
     .{
         .buffer = "bool = true",
         .items = &.{
@@ -985,6 +996,9 @@ const next_test_cases: []const NextTestCase = &.{
             null,
         },
     },
+};
+
+const datetime_cases: []const TestCase = &.{
     .{
         .buffer = "dt = 1979-05-27T07:32:45Z",
         .items = &.{
@@ -1445,6 +1459,9 @@ const next_test_cases: []const NextTestCase = &.{
         },
         .toml_version = .@"1.0.0",
     },
+};
+
+const int_cases: []const TestCase = &.{
     .{
         .buffer = "int = 0",
         .items = &.{
@@ -1833,6 +1850,9 @@ const next_test_cases: []const NextTestCase = &.{
             },
         },
     },
+};
+
+const float_cases: []const TestCase = &.{
     .{
         .buffer = "float = 0.0",
         .items = &.{
@@ -2329,6 +2349,369 @@ const next_test_cases: []const NextTestCase = &.{
     },
 };
 
+const array_cases: []const TestCase = &.{
+    .{
+        .buffer = "array = [\"hello\", 13, true]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .string = "hello" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 13 },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .boolean = true },
+            },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "array = []",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "array = [1,]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "array = [[1], [2, 3]]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{ .tag = .array_end },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 2 },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 3 },
+            },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "array = [[]]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer =
+        \\
+        \\array = [
+        \\  []
+        \\]
+        ,
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer =
+        \\
+        \\array = [
+        \\  [
+        \\]]
+        ,
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "array = [[],]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer =
+        \\
+        \\array = ["hello",
+        \\  13,
+        \\  true,
+        \\]
+        ,
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .string = "hello" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 13 },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .boolean = true },
+            },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "array = [1979-05-27, 07:32:45, 1979-05-27T07:32:45Z]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{
+                    .local_date = .{
+                        .year = 1979,
+                        .month = 5,
+                        .day = 27,
+                    },
+                },
+            },
+            .{
+                .tag = .value,
+                .value = .{
+                    .local_time = .{
+                        .hour = 7,
+                        .minute = 32,
+                        .second = 45,
+                    },
+                },
+            },
+            .{
+                .tag = .value,
+                .value = .{
+                    .datetime = .{
+                        .year = 1979,
+                        .month = 5,
+                        .day = 27,
+                        .hour = 7,
+                        .minute = 32,
+                        .second = 45,
+                        .tz = 0,
+                    },
+                },
+            },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "array = [1 2]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+    },
+    .{
+        .buffer = "array = [1,,2]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+    },
+    .{
+        .buffer = "array = [1",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedEnd },
+            },
+        },
+    },
+    .{
+        .buffer =
+        \\
+        \\array = [1
+        \\2]
+        ,
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+    },
+    .{
+        .buffer =
+        \\
+        \\array = [
+        \\]
+        ,
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "array = [1, [[]]]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{
+                    .int = 1,
+                },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "array = [[1], [[]]]",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{
+                    .int = 1,
+                },
+            },
+            .{ .tag = .array_end },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+};
+
 fn convertItem(src: ?Item) ?TestItem {
     if (!builtin.is_test) {
         @compileError("convertItem may only be used in tests");
@@ -2394,8 +2777,8 @@ fn expectEqualTestItem(expected: ?TestItem, actual: ?TestItem) !void {
     }
 }
 
-test "Parser.next" {
-    for (next_test_cases) |case| {
+fn runTests(cases: []const TestCase) !void {
+    for (cases) |case| {
         var items: std.ArrayList(u8) = .empty;
         defer items.deinit(std.testing.allocator);
 
@@ -2431,4 +2814,36 @@ test "Parser.next" {
             }
         }
     }
+}
+
+test "Parser.next" {
+    try runTests(test_cases);
+}
+
+test "Parser.next table headers" {
+    try runTests(table_header_cases);
+}
+
+test "Parser.next key value" {
+    try runTests(key_value_cases);
+}
+
+test "Parser.next booleans" {
+    try runTests(bool_cases);
+}
+
+test "Parser.next datetimes" {
+    try runTests(datetime_cases);
+}
+
+test "Parser.next ints" {
+    try runTests(int_cases);
+}
+
+test "Parser.next floats" {
+    try runTests(float_cases);
+}
+
+test "Parser.next arrays" {
+    try runTests(array_cases);
 }
