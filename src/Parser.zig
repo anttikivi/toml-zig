@@ -3,7 +3,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Parses TOML tokens into syntax-aware items and decodes scalars from
-//! the input.
+//! the input. It emits `Item`s that contain the information parsed from
+//! the tokens it receives.
+//!
+//! The Parser validates the syntax of the tokens it receives. However, it does
+//! not keep track of the keys and values so checking for duplicate keys and
+//! other such requirements is left for the receiver. As it does not use
+//! an allocator, it does not parse string values. The receiver must handle
+//! the strings, e.g. normalize the line endings and parse escape sequences.
 
 const Parser = @This();
 
@@ -119,6 +126,10 @@ pub fn init(input: []const u8, options: Options) Parser {
     };
 }
 
+/// Returns the next `Item` parsed from the tokens obtained from the input.
+/// The string values are always slices from the original input buffer, and
+/// the receiver of the `Item` must either duplicate the strings or inform
+/// the caller of the decoder on the ownership and borrowing of the strings.
 pub fn next(self: *Parser) Error!?Item {
     errdefer self.state = .invalid;
     errdefer self.token = null;
