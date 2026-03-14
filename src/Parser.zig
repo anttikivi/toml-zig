@@ -217,7 +217,7 @@ pub fn next(self: *Parser) Error!?Item {
                     self.state = .table_header;
                     result.tag = .table_key;
                     result.value = .{
-                        .string = self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end],
+                        .string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
                     };
                     self.token = null;
                 },
@@ -225,7 +225,7 @@ pub fn next(self: *Parser) Error!?Item {
                     self.state = .table_header;
                     result.tag = .table_key;
                     result.value = .{
-                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end],
+                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
                     };
                     self.token = null;
                 },
@@ -293,7 +293,7 @@ pub fn next(self: *Parser) Error!?Item {
                     self.state = .key;
                     result.tag = .key;
                     result.value = .{
-                        .string = self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end],
+                        .string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
                     };
                     self.token = null;
                 },
@@ -301,7 +301,7 @@ pub fn next(self: *Parser) Error!?Item {
                     self.state = .key;
                     result.tag = .key;
                     result.value = .{
-                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end],
+                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
                     };
                     self.token = null;
                 },

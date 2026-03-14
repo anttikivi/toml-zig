@@ -155,7 +155,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .table_header_end,
@@ -171,7 +171,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .table_header_end,
@@ -191,7 +191,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .string = "\"b\"" },
+                .value = .{ .string = "b" },
             },
             .{
                 .tag = .table_key,
@@ -215,7 +215,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .literal_string = "'b'" },
+                .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .table_key,
@@ -239,11 +239,11 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .literal_string = "'b'" },
+                .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .table_key,
-                .value = .{ .string = "\"c\"" },
+                .value = .{ .string = "c" },
             },
             .{
                 .tag = .table_key,
@@ -263,7 +263,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .table_key,
@@ -271,7 +271,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .literal_string = "'c'" },
+                .value = .{ .literal_string = "c" },
             },
             .{
                 .tag = .table_header_end,
@@ -343,7 +343,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -371,7 +371,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -387,7 +387,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -403,7 +403,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -419,7 +419,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -435,7 +435,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .table_key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -502,7 +502,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .value,
@@ -516,7 +516,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .key,
@@ -538,7 +538,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .key,
-                .value = .{ .string = "\"b\"" },
+                .value = .{ .string = "b" },
             },
             .{
                 .tag = .value,
@@ -552,11 +552,11 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .key,
-                .value = .{ .string = "\"b\"" },
+                .value = .{ .string = "b" },
             },
             .{
                 .tag = .value,
@@ -570,7 +570,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .key,
@@ -578,7 +578,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .key,
-                .value = .{ .string = "\"c\"" },
+                .value = .{ .string = "c" },
             },
             .{
                 .tag = .value,
@@ -596,7 +596,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .key,
-                .value = .{ .string = "\"b\"" },
+                .value = .{ .string = "b" },
             },
             .{
                 .tag = .key,
@@ -614,7 +614,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .value,
@@ -628,11 +628,11 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'b'" },
+                .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .value,
@@ -646,7 +646,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .key,
@@ -668,7 +668,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'b'" },
+                .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .value,
@@ -682,7 +682,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .key,
@@ -690,7 +690,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'c'" },
+                .value = .{ .literal_string = "c" },
             },
             .{
                 .tag = .value,
@@ -708,7 +708,7 @@ const next_test_cases: []const NextTestCase = &.{
             },
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'b'" },
+                .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .key,
@@ -726,11 +726,11 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .key,
-                .value = .{ .string = "\"b\"" },
+                .value = .{ .string = "b" },
             },
             .{
                 .tag = .key,
@@ -792,7 +792,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -814,7 +814,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -827,7 +827,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .string = "\"a\"" },
+                .value = .{ .string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -840,7 +840,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -862,7 +862,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .@"error",
@@ -875,7 +875,7 @@ const next_test_cases: []const NextTestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
-                .value = .{ .literal_string = "'a'" },
+                .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .@"error",
