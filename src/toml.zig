@@ -26,6 +26,8 @@ pub const Version = enum {
 pub const Features = struct {
     escape_e: bool = false,
     escape_xhh: bool = false,
+    inline_table_newlines: bool = false,
+    inline_table_trailing_comma: bool = false,
     optional_seconds: bool = false,
 
     const Self = @This();
@@ -36,6 +38,8 @@ pub const Features = struct {
             .@"1.1.0" => .{
                 .escape_e = true,
                 .escape_xhh = true,
+                .inline_table_newlines = true,
+                .inline_table_trailing_comma = true,
                 .optional_seconds = true,
             },
         };

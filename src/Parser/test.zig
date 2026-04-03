@@ -31,6 +31,8 @@ const TestItem = struct {
         value,
         array_start,
         array_end,
+        inline_table_start,
+        inline_table_end,
     };
 
     pub const Value = union(enum) {
@@ -2712,6 +2714,394 @@ const array_cases: []const TestCase = &.{
     },
 };
 
+const inline_table_cases: []const TestCase = &.{
+    .{
+        .buffer = "table = {}",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "table = { a = 1 }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{ .tag = .inline_table_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "table = { a = 1, b = true, c = \"hello\" }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "b" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .boolean = true },
+            },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "c" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .string = "hello" },
+            },
+            .{ .tag = .inline_table_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "table = { \"a\" = 1, 'b' = 2 }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .string = "a" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .key,
+                .value = .{ .literal_string = "b" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 2 },
+            },
+            .{ .tag = .inline_table_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "table = { a.b = 1, c.\"d\" = 2 }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "b" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "c" },
+            },
+            .{
+                .tag = .key,
+                .value = .{ .string = "d" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 2 },
+            },
+            .{ .tag = .inline_table_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "table = { point = { x = 1, y = 2 }, values = [3, 4] }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "point" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "x" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "y" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 2 },
+            },
+            .{ .tag = .inline_table_end },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "values" },
+            },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 3 },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 4 },
+            },
+            .{ .tag = .array_end },
+            .{ .tag = .inline_table_end },
+            null,
+        },
+    },
+    .{
+        .buffer =
+        \\
+        \\table = {
+        \\  a = 1,
+        \\  b = 2,
+        \\}
+        ,
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "b" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 2 },
+            },
+            .{ .tag = .inline_table_end },
+            null,
+        },
+    },
+    .{
+        .buffer =
+        \\
+        \\table = {
+        \\  a = 1,
+        \\  b = 2,
+        \\}
+        ,
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+        .toml_version = .@"1.0.0",
+    },
+    .{
+        .buffer = "table = { a = 1, }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{ .tag = .inline_table_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "table = { a = 1, }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+        .toml_version = .@"1.0.0",
+    },
+    .{
+        .buffer = "table = { a = 1 b = 2 }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+    },
+    .{
+        .buffer = "table = { a = 1, , b = 2 }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+    },
+    .{
+        .buffer = "table = { a = }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+    },
+    .{
+        .buffer = "table = { a = { b = } }",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "b" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+    },
+    .{
+        .buffer = "table = { a = 1",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "table" },
+            },
+            .{ .tag = .inline_table_start },
+            .{
+                .tag = .key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedEnd },
+            },
+        },
+    },
+};
+
 fn convertItem(src: ?Item) ?TestItem {
     if (!builtin.is_test) {
         @compileError("convertItem may only be used in tests");
@@ -2846,4 +3236,8 @@ test "Parser.next floats" {
 
 test "Parser.next arrays" {
     try runTests(array_cases);
+}
+
+test "Parser.next inline tables" {
+    try runTests(inline_table_cases);
 }

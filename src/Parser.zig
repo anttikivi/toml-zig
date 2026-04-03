@@ -54,6 +54,8 @@ pub const Item = struct {
         value,
         array_start,
         array_end,
+        inline_table_start,
+        inline_table_end,
     };
 
     pub const Value = union(enum) {
@@ -119,6 +121,7 @@ pub const State = enum {
     key_incomplete,
     value_start,
     value_end,
+    inline_table,
 };
 
 /// Stack for storing the current nesting status of the parser when inside
@@ -437,6 +440,16 @@ pub fn next(self: *Parser) Error!?Item {
 
                     return self.fail(error.UnexpectedToken, "array not closed");
                 },
+                .left_brace => {
+                    self.state = .inline_table;
+                    result.tag = .inline_table_start;
+                    self.token = null;
+                    self.nesting.push(.inline_table) catch |err| return self.printFail(
+                        err,
+                        "exceeded maximum nesting level {d}",
+                        .{max_nesting},
+                    );
+                },
                 .string => {
                     self.state = .value_end;
                     result.tag = .value;
@@ -552,7 +565,6 @@ pub fn next(self: *Parser) Error!?Item {
                         else => self.fail(err, null),
                     };
                 },
-                // TODO: inline table start.
                 else => return self.fail(error.UnexpectedToken, null),
             }
         },
@@ -602,7 +614,32 @@ pub fn next(self: *Parser) Error!?Item {
                                     else => return self.fail(error.UnexpectedToken, "array not closed"),
                                 }
                             },
-                            .inline_table => {}, // TODO:
+                            .inline_table => {
+                                self.token = try self.tokenizer.next();
+                                retry: switch (self.token.?.tag) {
+                                    .right_brace => if (self.features.inline_table_newlines) {
+                                        self.state = .value_end;
+                                        self.token = null;
+                                        assert(self.nesting.pop().? == .inline_table);
+                                        result.tag = .inline_table_end;
+                                        break :state;
+                                    } else {
+                                        return self.fail(error.UnexpectedToken, null);
+                                    },
+                                    .newline => if (self.features.inline_table_newlines) {
+                                        self.token = try self.tokenizer.next();
+                                        continue :retry self.token.?.tag;
+                                    } else {
+                                        return self.fail(error.UnexpectedToken, null);
+                                    },
+                                    else => return self.fail(error.UnexpectedToken, "inline table not closed"),
+                                }
+                            },
+                            // TODO: I don't think that any newlines are allowed
+                            // between the comma and and the end of a value in
+                            // an inline table. I guess we are going to find
+                            // out.
+                            // .inline_table => return self.fail(error.UnexpectedToken, null),
                         }
 
                         break :state;
@@ -623,7 +660,7 @@ pub fn next(self: *Parser) Error!?Item {
                                 result.tag = .array_end;
                                 break :state;
                             },
-                            .inline_table => {}, // TODO:
+                            else => return self.fail(error.UnexpectedToken, null),
                         }
                     }
 
@@ -640,7 +677,23 @@ pub fn next(self: *Parser) Error!?Item {
                                 result.tag = .array_end;
                                 break :state;
                             },
-                            .inline_table => {}, // TODO:
+                            else => return self.fail(error.UnexpectedToken, null),
+                        }
+                    }
+
+                    return self.fail(error.UnexpectedToken, null);
+                },
+                .right_brace => {
+                    if (self.nesting.top()) |nest| {
+                        switch (nest) {
+                            .inline_table => {
+                                self.state = .value_end;
+                                self.token = null;
+                                assert(self.nesting.pop().? == .inline_table);
+                                result.tag = .inline_table_end;
+                                break :state;
+                            },
+                            else => return self.fail(error.UnexpectedToken, null),
                         }
                     }
 
@@ -653,7 +706,7 @@ pub fn next(self: *Parser) Error!?Item {
                                 self.token = try self.tokenizer.next();
                                 retry: switch (self.token.?.tag) {
                                     .double_right_bracket => {
-                                        self.state = .table;
+                                        self.state = .value_end;
                                         self.token.?.tag = .right_bracket;
                                         self.token.?.loc.start += 1;
                                         assert(self.nesting.pop().? == .array);
@@ -661,7 +714,7 @@ pub fn next(self: *Parser) Error!?Item {
                                         break :state;
                                     },
                                     .right_bracket => {
-                                        self.state = .table;
+                                        self.state = .value_end;
                                         self.token = null;
                                         assert(self.nesting.pop().? == .array);
                                         result.tag = .array_end;
@@ -685,11 +738,63 @@ pub fn next(self: *Parser) Error!?Item {
                                     else => return self.fail(error.UnexpectedToken, "array not closed"),
                                 }
                             },
-                            .inline_table => {}, // TODO:
+                            .inline_table => {
+                                self.token = try self.tokenizer.next();
+                                retry: switch (self.token.?.tag) {
+                                    .right_brace => if (self.features.inline_table_trailing_comma) {
+                                        self.state = .value_end;
+                                        self.token = null;
+                                        assert(self.nesting.pop().? == .inline_table);
+                                        result.tag = .inline_table_end;
+                                        break :state;
+                                    } else {
+                                        return self.fail(error.UnexpectedToken, null);
+                                    },
+                                    .newline => if (self.features.inline_table_newlines) {
+                                        self.token = try self.tokenizer.next();
+                                        continue :retry self.token.?.tag;
+                                    } else {
+                                        return self.fail(error.UnexpectedToken, null);
+                                    },
+                                    .literal, .string, .literal_string => {
+                                        self.state = .inline_table;
+                                        continue :state .inline_table;
+                                    },
+                                    else => return self.fail(error.UnexpectedToken, "inline table not closed"),
+                                }
+                            },
                         }
                     }
 
                     return self.fail(error.UnexpectedToken, null);
+                },
+                else => return self.fail(error.UnexpectedToken, null),
+            }
+        },
+        .inline_table => {
+            if (self.token == null) {
+                self.token = self.token orelse try self.tokenizer.next();
+            }
+
+            assert(self.nesting.len > 0);
+
+            switch (self.token.?.tag) {
+                .right_brace => {
+                    self.state = .value_end;
+                    self.token = null;
+                    assert(self.nesting.pop().? == .inline_table);
+                    result.tag = .inline_table_end;
+                    break :state;
+                },
+                .newline => if (self.features.inline_table_newlines) {
+                    self.token = null;
+                    continue :state .inline_table;
+                } else {
+                    return self.fail(error.UnexpectedToken, null);
+                },
+                .literal, .string, .literal_string => {
+                    self.state = .key_incomplete;
+                    continue :state .key_incomplete;
                 },
                 else => return self.fail(error.UnexpectedToken, null),
             }
