@@ -49,6 +49,9 @@ pub const Item = struct {
         table_header_end,
         /// Key used in a table header.
         table_key,
+        array_table_header_start,
+        array_table_header_end,
+        array_table_key,
         /// Key before a value.
         key,
         value,
@@ -117,6 +120,8 @@ pub const State = enum {
     table,
     table_header,
     table_header_incomplete,
+    array_table_header,
+    array_table_header_incomplete,
     key,
     key_incomplete,
     value_start,
@@ -207,6 +212,11 @@ pub fn next(self: *Parser) Error!?Item {
                     self.token = null;
                     result.tag = .table_header_start;
                 },
+                .double_left_bracket => {
+                    self.state = .array_table_header_incomplete;
+                    self.token = null;
+                    result.tag = .array_table_header_start;
+                },
                 .literal, .string, .literal_string => {
                     self.state = .key_incomplete;
                     continue :state .key_incomplete;
@@ -282,6 +292,86 @@ pub fn next(self: *Parser) Error!?Item {
                 .literal_string => {
                     self.state = .table_header;
                     result.tag = .table_key;
+                    result.value = .{
+                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
+                    };
+                    self.token = null;
+                },
+                else => return self.fail(error.UnexpectedToken, "table header not terminated"),
+            }
+        },
+        .array_table_header, .array_table_header_incomplete => {
+            if (self.token == null) {
+                self.token = try self.tokenizer.next();
+            }
+
+            switch (self.token.?.tag) {
+                .end_of_file => return self.fail(error.UnterminatedHeader, null),
+                .dot => {
+                    if (self.state == .array_table_header_incomplete) {
+                        return self.fail(error.UnexpectedToken, null);
+                    }
+                    self.state = .array_table_header_incomplete;
+                    self.token = null;
+                    continue :state .array_table_header_incomplete;
+                },
+                .double_right_bracket => {
+                    if (self.state == .array_table_header_incomplete) {
+                        return self.fail(error.UnexpectedToken, null);
+                    }
+                    self.state = .table;
+                    self.token = null;
+                    result.tag = .array_table_header_end;
+                },
+                .literal => {
+                    result.tag = .array_table_key;
+
+                    const start = self.token.?.loc.start;
+
+                    if (self.state == .array_table_header_incomplete and
+                        self.tokenizer.buffer[start] == '.')
+                    {
+                        return self.fail(error.UnexpectedToken, null);
+                    }
+
+                    var end = start;
+
+                    while (end < self.token.?.loc.end) : (end += 1) {
+                        const c = self.tokenizer.buffer[end];
+                        if (!isBareKey(c)) {
+                            switch (c) {
+                                '.' => {
+                                    self.state = .array_table_header_incomplete;
+                                    self.token.?.loc.start = end + 1;
+                                    break;
+                                },
+                                else => return self.fail(error.InvalidCharacter, null),
+                            }
+                        }
+                    }
+
+                    if (end == self.token.?.loc.end or
+                        self.token.?.loc.start == self.token.?.loc.end)
+                    {
+                        if (self.tokenizer.buffer[end] != '.') {
+                            self.state = .array_table_header;
+                        }
+                        self.token = null;
+                    }
+
+                    result.value = .{ .literal = self.tokenizer.buffer[start..end] };
+                },
+                .string => {
+                    self.state = .array_table_header;
+                    result.tag = .array_table_key;
+                    result.value = .{
+                        .string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
+                    };
+                    self.token = null;
+                },
+                .literal_string => {
+                    self.state = .array_table_header;
+                    result.tag = .array_table_key;
                     result.value = .{
                         .literal_string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
                     };
