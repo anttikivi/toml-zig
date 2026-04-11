@@ -272,10 +272,10 @@ pub fn next(self: *Parser) Error!?Item {
                         }
                     }
 
-                    if (end == self.token.?.loc.end or self.token.?.loc.start == self.token.?.loc.end) {
-                        if (self.tokenizer.buffer[end] != '.') {
-                            self.state = .table_header;
-                        }
+                    if (end == self.token.?.loc.end) {
+                        self.state = .table_header;
+                        self.token = null;
+                    } else if (self.token.?.loc.start == self.token.?.loc.end) {
                         self.token = null;
                     }
 
@@ -350,12 +350,10 @@ pub fn next(self: *Parser) Error!?Item {
                         }
                     }
 
-                    if (end == self.token.?.loc.end or
-                        self.token.?.loc.start == self.token.?.loc.end)
-                    {
-                        if (self.tokenizer.buffer[end] != '.') {
-                            self.state = .array_table_header;
-                        }
+                    if (end == self.token.?.loc.end) {
+                        self.state = .array_table_header;
+                        self.token = null;
+                    } else if (self.token.?.loc.start == self.token.?.loc.end) {
                         self.token = null;
                     }
 
@@ -428,10 +426,10 @@ pub fn next(self: *Parser) Error!?Item {
                         }
                     }
 
-                    if (end == self.token.?.loc.end or self.token.?.loc.start == self.token.?.loc.end) {
-                        if (self.tokenizer.buffer[end] != '.') {
-                            self.state = .key;
-                        }
+                    if (end == self.token.?.loc.end) {
+                        self.state = .key;
+                        self.token = null;
+                    } else if (self.token.?.loc.start == self.token.?.loc.end) {
                         self.token = null;
                     }
 
@@ -507,7 +505,7 @@ pub fn next(self: *Parser) Error!?Item {
                                 result.tag = .array_end;
                                 break :state;
                             },
-                            .inline_table => {}, // TODO:
+                            else => return self.fail(error.UnexpectedToken, null),
                         }
                     }
 
@@ -692,7 +690,7 @@ pub fn next(self: *Parser) Error!?Item {
                                         result.tag = .array_end;
                                     },
                                     .right_bracket => {
-                                        self.state = .table;
+                                        self.state = .value_end;
                                         self.token = null;
                                         assert(self.nesting.pop().? == .array);
                                         result.tag = .array_end;
@@ -725,11 +723,6 @@ pub fn next(self: *Parser) Error!?Item {
                                     else => return self.fail(error.UnexpectedToken, "inline table not closed"),
                                 }
                             },
-                            // TODO: I don't think that any newlines are allowed
-                            // between the comma and and the end of a value in
-                            // an inline table. I guess we are going to find
-                            // out.
-                            // .inline_table => return self.fail(error.UnexpectedToken, null),
                         }
 
                         break :state;
@@ -901,23 +894,61 @@ fn isBareKey(c: u8) bool {
     }
 }
 
+fn isLeapYear(year: u16) bool {
+    return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0);
+}
+
+fn daysInMonth(year: u16, month: u8) ?u8 {
+    return switch (month) {
+        1, 3, 5, 7, 8, 10, 12 => 31,
+        4, 6, 9, 11 => 30,
+        2 => if (isLeapYear(year)) 29 else 28,
+        else => null,
+    };
+}
+
+fn validateDate(self: *Parser, year: u16, month: u8, day: u8) Error!void {
+    const max_day = daysInMonth(year, month) orelse return self.fail(error.InvalidDatetime, null);
+    if (day == 0 or day > max_day) {
+        return self.fail(error.InvalidDatetime, null);
+    }
+}
+
+fn validateTime(self: *Parser, hour: u8, minute: u8, second: ?u8, err: Error) Error!void {
+    if (hour > 23 or minute > 59) {
+        return self.fail(err, null);
+    }
+
+    if (second) |s| {
+        // RFC 3339 permits 60 to account for leap seconds.
+        if (s > 60) {
+            return self.fail(err, null);
+        }
+    }
+}
+
 fn parseDatetime(self: *Parser, s: []const u8) Error!Item.Value {
     var buf = s;
 
-    if (buf.len < 10 or buf[7] != '-') {
+    if (buf.len < 10 or buf[4] != '-' or buf[7] != '-') {
         return self.fail(error.InvalidDatetime, null);
     }
 
     const year = parseDatetimeDigits(u16, 4, buf[0..4]) catch return self.fail(error.InvalidDatetime, null);
     const month = parseDatetimeDigits(u8, 2, buf[5..7]) catch return self.fail(error.InvalidDatetime, null);
     const day = parseDatetimeDigits(u8, 2, buf[8..10]) catch return self.fail(error.InvalidDatetime, null);
+    try self.validateDate(year, month, day);
 
     // Due to how the tokenizer works, we need to check if the next token
     // continues the datetime.
     if (buf.len == 10) {
+        const date_end = self.token.?.loc.end;
         self.token = try self.tokenizer.next();
         switch (self.token.?.tag) {
             .literal => { // continue datetime
+                if (self.token.?.loc.start != date_end + 1 or self.tokenizer.buffer[date_end] != ' ') {
+                    return self.fail(error.InvalidDatetime, null);
+                }
                 buf = std.mem.trim(u8, self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end], " \t\r\n");
             },
             else => {
@@ -954,6 +985,7 @@ fn parseDatetime(self: *Parser, s: []const u8) Error!Item.Value {
     };
 
     buf = if (second == null) buf[5..] else buf[8..];
+    try self.validateTime(hour, minute, second, error.InvalidDatetime);
 
     const nano = blk: {
         if (buf.len > 1 and buf[0] == '.') {
@@ -962,16 +994,22 @@ fn parseDatetime(self: *Parser, s: []const u8) Error!Item.Value {
             }
 
             buf = buf[1..];
+            if (buf.len == 0 or !std.ascii.isDigit(buf[0])) {
+                return self.fail(error.InvalidDatetime, null);
+            }
 
             var n: u32 = 0;
             var i: usize = 0;
-            while (i < buf.len and std.ascii.isDigit(buf[i]) and i < 9) : (i += 1) {
-                n = n * 10 + (buf[i] - '0');
+            while (i < buf.len and std.ascii.isDigit(buf[i])) : (i += 1) {
+                if (i < 9) {
+                    n = n * 10 + (buf[i] - '0');
+                }
             }
 
             buf = buf[i..];
 
-            while (i < 9) : (i += 1) {
+            var significant_digits: usize = @min(i, 9);
+            while (significant_digits < 9) : (significant_digits += 1) {
                 n *= 10;
             }
 
@@ -1033,6 +1071,10 @@ fn parseDatetime(self: *Parser, s: []const u8) Error!Item.Value {
 fn parseTime(self: *Parser, s: []const u8) Error!Item.Value {
     var buf = s;
 
+    if (buf.len < 5 or buf[2] != ':') {
+        return self.fail(error.InvalidTime, null);
+    }
+
     const hour = parseDatetimeDigits(u8, 2, buf[0..2]) catch return self.fail(error.InvalidTime, null);
     const minute = parseDatetimeDigits(u8, 2, buf[3..5]) catch return self.fail(error.InvalidTime, null);
     const second = blk: {
@@ -1046,6 +1088,7 @@ fn parseTime(self: *Parser, s: []const u8) Error!Item.Value {
     };
 
     buf = if (second == null) buf[5..] else buf[8..];
+    try self.validateTime(hour, minute, second, error.InvalidTime);
 
     const nano = blk: {
         if (buf.len > 1 and buf[0] == '.') {
@@ -1054,14 +1097,22 @@ fn parseTime(self: *Parser, s: []const u8) Error!Item.Value {
             }
 
             buf = buf[1..];
+            if (buf.len == 0 or !std.ascii.isDigit(buf[0])) {
+                return self.fail(error.InvalidTime, null);
+            }
 
             var n: u32 = 0;
             var i: usize = 0;
-            while (i < buf.len and std.ascii.isDigit(buf[i]) and i < 9) : (i += 1) {
-                n = n * 10 + (buf[i] - '0');
+            while (i < buf.len and std.ascii.isDigit(buf[i])) : (i += 1) {
+                if (i < 9) {
+                    n = n * 10 + (buf[i] - '0');
+                }
             }
 
-            while (i < 9) : (i += 1) {
+            buf = buf[i..];
+
+            var significant_digits: usize = @min(i, 9);
+            while (significant_digits < 9) : (significant_digits += 1) {
                 n *= 10;
             }
 
@@ -1070,6 +1121,10 @@ fn parseTime(self: *Parser, s: []const u8) Error!Item.Value {
 
         break :blk null;
     };
+
+    if (buf.len != 0) {
+        return self.fail(error.InvalidTime, null);
+    }
 
     self.token = null;
     return .{
@@ -1245,6 +1300,7 @@ fn parseNumber(self: *Parser, buf: []const u8) Error!Item.Value {
 
     // Just parse the full string again. Otherwise, we'd risk losing precision
     // over probably negligible performance gains.
+    self.token = null;
     return .{ .float = std.fmt.parseFloat(Float, buf) catch |err| return self.fail(err, null) };
 }
 

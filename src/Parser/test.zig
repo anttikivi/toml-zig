@@ -27,6 +27,9 @@ const TestItem = struct {
         table_header_start,
         table_header_end,
         table_key,
+        array_table_header_start,
+        array_table_header_end,
+        array_table_key,
         key,
         value,
         array_start,
@@ -447,6 +450,81 @@ const table_header_cases: []const TestCase = &.{
             .{
                 .tag = .@"error",
                 .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+    },
+};
+
+const array_table_header_cases: []const TestCase = &.{
+    .{
+        .buffer = "[[a]]",
+        .items = &.{
+            .{ .tag = .array_table_header_start },
+            .{
+                .tag = .array_table_key,
+                .value = .{ .literal = "a" },
+            },
+            .{ .tag = .array_table_header_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "[[a.b]]",
+        .items = &.{
+            .{ .tag = .array_table_header_start },
+            .{
+                .tag = .array_table_key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .array_table_key,
+                .value = .{ .literal = "b" },
+            },
+            .{ .tag = .array_table_header_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "[[\"a\".'b']]",
+        .items = &.{
+            .{ .tag = .array_table_header_start },
+            .{
+                .tag = .array_table_key,
+                .value = .{ .string = "a" },
+            },
+            .{
+                .tag = .array_table_key,
+                .value = .{ .literal_string = "b" },
+            },
+            .{ .tag = .array_table_header_end },
+            null,
+        },
+    },
+    .{
+        .buffer = "[[a.]]",
+        .items = &.{
+            .{ .tag = .array_table_header_start },
+            .{
+                .tag = .array_table_key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnexpectedToken },
+            },
+        },
+    },
+    .{
+        .buffer = "[[a",
+        .items = &.{
+            .{ .tag = .array_table_header_start },
+            .{
+                .tag = .array_table_key,
+                .value = .{ .literal = "a" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.UnterminatedHeader },
             },
         },
     },
@@ -1073,6 +1151,32 @@ const datetime_cases: []const TestCase = &.{
         },
     },
     .{
+        .buffer = "dt = 1979-05-27\t07:32:45Z",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "dt" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidDatetime },
+            },
+        },
+    },
+    .{
+        .buffer = "dt = 1979-05-27  07:32:45Z",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "dt" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidDatetime },
+            },
+        },
+    },
+    .{
         .buffer = "dt = 1979-05-27 07:32:45.23",
         .items = &.{
             .{
@@ -1215,6 +1319,45 @@ const datetime_cases: []const TestCase = &.{
         },
     },
     .{
+        .buffer = "date = 1979-00-27",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "date" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidDatetime },
+            },
+        },
+    },
+    .{
+        .buffer = "date = 1979-13-27",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "date" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidDatetime },
+            },
+        },
+    },
+    .{
+        .buffer = "date = 1979-02-30",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "date" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidDatetime },
+            },
+        },
+    },
+    .{
         .buffer = "dt = 1979-05-27T07:32Z",
         .items = &.{
             .{
@@ -1328,6 +1471,69 @@ const datetime_cases: []const TestCase = &.{
         .toml_version = .@"1.0.0",
     },
     .{
+        .buffer = "dt = 1979-05-27T24:00:00Z",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "dt" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidDatetime },
+            },
+        },
+    },
+    .{
+        .buffer = "dt = 1979-05-27T07:60:00Z",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "dt" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidDatetime },
+            },
+        },
+    },
+    .{
+        .buffer = "dt = 1979-05-27T07:32:60Z",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "dt" },
+            },
+            .{
+                .tag = .value,
+                .value = .{
+                    .datetime = .{
+                        .year = 1979,
+                        .month = 5,
+                        .day = 27,
+                        .hour = 7,
+                        .minute = 32,
+                        .second = 60,
+                        .tz = 0,
+                    },
+                },
+            },
+            null,
+        },
+    },
+    .{
+        .buffer = "dt = 1979-05-27T07:32:61Z",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "dt" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidDatetime },
+            },
+        },
+    },
+    .{
         .buffer = "dt = 1979-05-27T07:32.23-07:00",
         .items = &.{
             .{
@@ -1354,6 +1560,45 @@ const datetime_cases: []const TestCase = &.{
         },
     },
     .{
+        .buffer = "time = 07:32:45Z",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "time" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidTime },
+            },
+        },
+    },
+    .{
+        .buffer = "time = 07:32:45abc",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "time" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidTime },
+            },
+        },
+    },
+    .{
+        .buffer = "time = 07:32:45.",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "time" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidTime },
+            },
+        },
+    },
+    .{
         .buffer = "time = 07:32:45",
         .items = &.{
             .{
@@ -1371,6 +1616,65 @@ const datetime_cases: []const TestCase = &.{
                 },
             },
             null,
+        },
+    },
+    .{
+        .buffer = "time = 24:00:00",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "time" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidTime },
+            },
+        },
+    },
+    .{
+        .buffer = "time = 07:60:00",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "time" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidTime },
+            },
+        },
+    },
+    .{
+        .buffer = "time = 07:32:60",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "time" },
+            },
+            .{
+                .tag = .value,
+                .value = .{
+                    .local_time = .{
+                        .hour = 7,
+                        .minute = 32,
+                        .second = 60,
+                    },
+                },
+            },
+            null,
+        },
+    },
+    .{
+        .buffer = "time = 07:32:61",
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "time" },
+            },
+            .{
+                .tag = .@"error",
+                .value = .{ .@"error" = error.InvalidTime },
+            },
         },
     },
     .{
@@ -1866,6 +2170,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 0 },
             },
+            null,
         },
     },
     .{
@@ -1879,6 +2184,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 1 },
             },
+            null,
         },
     },
     .{
@@ -1892,6 +2198,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 1 },
             },
+            null,
         },
     },
     .{
@@ -1905,6 +2212,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 1.1 },
             },
+            null,
         },
     },
     .{
@@ -1918,6 +2226,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 2.3456789 },
             },
+            null,
         },
     },
     .{
@@ -1931,6 +2240,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 0.29375927359253 },
             },
+            null,
         },
     },
     .{
@@ -1944,6 +2254,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 12.34 },
             },
+            null,
         },
     },
     .{
@@ -1957,6 +2268,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 100 },
             },
+            null,
         },
     },
     .{
@@ -1970,6 +2282,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 100 },
             },
+            null,
         },
     },
     .{
@@ -1983,6 +2296,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 100 },
             },
+            null,
         },
     },
     .{
@@ -1996,6 +2310,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 1000.5 },
             },
+            null,
         },
     },
     .{
@@ -2009,6 +2324,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = 10000000000 },
             },
+            null,
         },
     },
     .{
@@ -2022,6 +2338,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = -0.0 },
             },
+            null,
         },
     },
     .{
@@ -2035,6 +2352,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = -1 },
             },
+            null,
         },
     },
     .{
@@ -2048,6 +2366,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = -1.1 },
             },
+            null,
         },
     },
     .{
@@ -2061,6 +2380,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = -2.3456789 },
             },
+            null,
         },
     },
     .{
@@ -2074,6 +2394,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = -0.29375927359253 },
             },
+            null,
         },
     },
     .{
@@ -2087,6 +2408,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = -12.34 },
             },
+            null,
         },
     },
     .{
@@ -2100,6 +2422,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = std.math.inf(Float) },
             },
+            null,
         },
     },
     .{
@@ -2113,6 +2436,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = std.math.inf(Float) },
             },
+            null,
         },
     },
     .{
@@ -2126,6 +2450,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = -std.math.inf(Float) },
             },
+            null,
         },
     },
     .{
@@ -2139,6 +2464,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = std.math.nan(Float) },
             },
+            null,
         },
     },
     .{
@@ -2152,6 +2478,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = std.math.nan(Float) },
             },
+            null,
         },
     },
     .{
@@ -2165,6 +2492,7 @@ const float_cases: []const TestCase = &.{
                 .tag = .value,
                 .value = .{ .float = -std.math.nan(Float) },
             },
+            null,
         },
     },
     .{
@@ -2479,6 +2807,61 @@ const array_cases: []const TestCase = &.{
             },
             .{ .tag = .array_start },
             .{ .tag = .array_start },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer =
+        \\
+        \\array = [
+        \\  [1
+        \\  ]
+        \\]
+        ,
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{ .tag = .array_end },
+            .{ .tag = .array_end },
+            null,
+        },
+    },
+    .{
+        .buffer =
+        \\
+        \\array = [
+        \\  [1],
+        \\  [2
+        \\  ]
+        \\]
+        ,
+        .items = &.{
+            .{
+                .tag = .key,
+                .value = .{ .literal = "array" },
+            },
+            .{ .tag = .array_start },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 1 },
+            },
+            .{ .tag = .array_end },
+            .{ .tag = .array_start },
+            .{
+                .tag = .value,
+                .value = .{ .int = 2 },
+            },
             .{ .tag = .array_end },
             .{ .tag = .array_end },
             null,
@@ -3212,6 +3595,10 @@ test "Parser.next" {
 
 test "Parser.next table headers" {
     try runTests(table_header_cases);
+}
+
+test "Parser.next array table headers" {
+    try runTests(array_table_header_cases);
 }
 
 test "Parser.next key value" {
