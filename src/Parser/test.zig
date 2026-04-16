@@ -6,12 +6,12 @@ const builtin = @import("builtin");
 const std = @import("std");
 
 const Parser = @import("../Parser.zig");
-const Date = Parser.Date;
 const Error = Parser.Error;
 const Item = Parser.Item;
 const State = Parser.State;
-const Time = Parser.Time;
-const Datetime = Parser.Datetime;
+const Date = @import("../value.zig").Date;
+const Time = @import("../value.zig").Time;
+const Datetime = @import("../value.zig").Datetime;
 const default_version = @import("../toml.zig").default_version;
 const Float = @import("../toml.zig").Float;
 const Int = @import("../toml.zig").Int;
@@ -3485,7 +3485,7 @@ const inline_table_cases: []const TestCase = &.{
     },
 };
 
-fn convertItem(src: ?Item) ?TestItem {
+fn convertItem(src: ?Item, buffer: []const u8) ?TestItem {
     if (!builtin.is_test) {
         @compileError("convertItem may only be used in tests");
     }
@@ -3511,6 +3511,23 @@ fn convertItem(src: ?Item) ?TestItem {
             }
 
             switch (src.?.value.?) {
+                // String-kind variants carry no payload in the Parser; the
+                // content lives in `Item.span`. Slice the source to produce
+                // the string that the tests expect.
+                inline .literal,
+                .string,
+                .multiline_string,
+                .literal_string,
+                .multiline_literal_string,
+                => |_, tag| {
+                    const field_name = @tagName(tag);
+                    if (!@hasField(Item.Value, field_name)) {
+                        @compileError("invalid Item.Value field name: " ++ field_name);
+                    }
+
+                    const slice = buffer[src.?.span.start..src.?.span.end];
+                    break :blk @unionInit(TestItem.Value, field_name, slice);
+                },
                 inline else => |payload, tag| {
                     const field_name = @tagName(tag);
                     if (!@hasField(Item.Value, field_name)) {
@@ -3575,7 +3592,7 @@ fn runTests(cases: []const TestCase) !void {
                         try std.testing.expectEqual(null, parser.token);
                     },
                     else => {
-                        const actual = convertItem(try parser.next());
+                        const actual = convertItem(try parser.next(), case.buffer);
                         var buf: [512]u8 = undefined;
                         items.appendSlice(
                             std.testing.allocator,

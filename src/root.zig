@@ -34,6 +34,16 @@ pub const Position = struct {
     snippet: []const u8 = "",
 };
 
+/// General half-open index range `[start, end)` into an array.
+pub const Span = struct {
+    start: u32,
+    end: u32,
+
+    pub fn narrow(self: @This(), n: u32) @This() {
+        return .{ .start = self.start + n, .end = self.end - n };
+    }
+};
+
 /// State type used internally by the library in the UTF-8 validation algorithm.
 /// For more information, see:
 /// https://unicode.org/mail-arch/unicode-ml/y2003-m02/att-0467/01-The_Algorithm_to_Valide_an_UTF-8_String

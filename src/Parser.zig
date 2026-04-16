@@ -18,6 +18,7 @@ const std = @import("std");
 const assert = std.debug.assert;
 
 const Diagnostics = @import("root.zig").Diagnostics;
+const Span = @import("root.zig").Span;
 const Tokenizer = @import("Tokenizer.zig");
 const Token = @import("Tokenizer.zig").Token;
 const default_version = @import("toml.zig").default_version;
@@ -25,6 +26,9 @@ const Features = @import("toml.zig").Features;
 const Float = @import("toml.zig").Float;
 const Int = @import("toml.zig").Int;
 const Version = @import("toml.zig").Version;
+const Datetime = @import("value.zig").Datetime;
+const Date = @import("value.zig").Date;
+const Time = @import("value.zig").Time;
 
 state: State = .table,
 token: ?Token = null,
@@ -42,6 +46,7 @@ pub const Options = struct {
 
 pub const Item = struct {
     tag: Tag,
+    span: Span,
     value: ?Value = null,
 
     pub const Tag = enum {
@@ -62,11 +67,12 @@ pub const Item = struct {
     };
 
     pub const Value = union(enum) {
-        literal: []const u8,
-        string: []const u8,
-        multiline_string: []const u8,
-        literal_string: []const u8,
-        multiline_literal_string: []const u8,
+        // TODO: Consider renaming as this is used for bare keys.
+        literal,
+        string,
+        multiline_string,
+        literal_string,
+        multiline_literal_string,
         int: Int,
         float: Float,
         boolean: bool,
@@ -74,8 +80,6 @@ pub const Item = struct {
         local_datetime: Datetime,
         local_date: Date,
         local_time: Time,
-        // TODO: Array.
-        // TODO: Table.
     };
 };
 
@@ -87,32 +91,6 @@ pub const Error = Diagnostics.Error || Tokenizer.Error || error{
     Overflow,
     UnexpectedEnd,
     UnterminatedHeader,
-};
-
-/// TODO: Move to a more fitting place.
-pub const Datetime = struct {
-    year: u16,
-    month: u8,
-    day: u8,
-    hour: u8,
-    minute: u8,
-    second: u8,
-    nano: ?u32 = null,
-    /// Timezone offset in minutes from UTC. `null` means local datetime.
-    tz: ?i16 = null,
-};
-/// TODO: Move to a more fitting place.
-pub const Date = struct {
-    year: u16,
-    month: u8,
-    day: u8,
-};
-/// TODO: Move to a more fitting place.
-pub const Time = struct {
-    hour: u8,
-    minute: u8,
-    second: u8,
-    nano: ?u32 = null,
 };
 
 pub const State = enum {
@@ -186,7 +164,10 @@ pub fn next(self: *Parser) Error!?Item {
     errdefer self.state = .invalid;
     errdefer self.token = null;
 
-    var result: Item = .{ .tag = undefined };
+    var result: Item = .{
+        .tag = undefined,
+        .span = undefined,
+    };
 
     state: switch (self.state) {
         .invalid => return self.fail(error.InvalidState, null),
@@ -200,7 +181,6 @@ pub fn next(self: *Parser) Error!?Item {
             switch (self.token.?.tag) {
                 .end_of_file => {
                     self.token = null;
-                    assert(self.nesting.len == 0);
                     return null;
                 },
                 .newline => {
@@ -208,14 +188,16 @@ pub fn next(self: *Parser) Error!?Item {
                     continue :state .table;
                 },
                 .left_bracket => {
+                    result.tag = .table_header_start;
+                    result.span = self.token.?.span;
                     self.state = .table_header_incomplete;
                     self.token = null;
-                    result.tag = .table_header_start;
                 },
                 .double_left_bracket => {
+                    result.tag = .array_table_header_start;
+                    result.span = self.token.?.span;
                     self.state = .array_table_header_incomplete;
                     self.token = null;
-                    result.tag = .array_table_header_start;
                 },
                 .literal, .string, .literal_string => {
                     self.state = .key_incomplete;
@@ -243,28 +225,31 @@ pub fn next(self: *Parser) Error!?Item {
                     if (self.state == .table_header_incomplete) {
                         return self.fail(error.UnexpectedToken, null);
                     }
+                    result.tag = .table_header_end;
+                    result.span = self.token.?.span;
                     self.state = .table;
                     self.token = null;
-                    result.tag = .table_header_end;
                 },
                 .literal => {
                     result.tag = .table_key;
 
-                    const start = self.token.?.loc.start;
+                    const start = self.token.?.span.start;
 
-                    if (self.state == .table_header_incomplete and self.tokenizer.buffer[start] == '.') {
+                    if (self.state == .table_header_incomplete and
+                        self.tokenizer.buffer[start] == '.')
+                    {
                         return self.fail(error.UnexpectedToken, null);
                     }
 
                     var end = start;
 
-                    while (end < self.token.?.loc.end) : (end += 1) {
+                    while (end < self.token.?.span.end) : (end += 1) {
                         const c = self.tokenizer.buffer[end];
                         if (!isBareKey(c)) {
                             switch (c) {
                                 '.' => {
                                     self.state = .table_header_incomplete;
-                                    self.token.?.loc.start = end + 1;
+                                    self.token.?.span.start = end + 1;
                                     break;
                                 },
                                 else => return self.fail(error.InvalidCharacter, null),
@@ -272,29 +257,28 @@ pub fn next(self: *Parser) Error!?Item {
                         }
                     }
 
-                    if (end == self.token.?.loc.end) {
+                    if (end == self.token.?.span.end) {
                         self.state = .table_header;
                         self.token = null;
-                    } else if (self.token.?.loc.start == self.token.?.loc.end) {
+                    } else if (self.token.?.span.start == self.token.?.span.end) {
                         self.token = null;
                     }
 
-                    result.value = .{ .literal = self.tokenizer.buffer[start..end] };
+                    result.span = .{ .start = start, .end = end };
+                    result.value = .literal;
                 },
                 .string => {
-                    self.state = .table_header;
                     result.tag = .table_key;
-                    result.value = .{
-                        .string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
-                    };
+                    result.span = self.token.?.span.narrow(1);
+                    result.value = .string;
+                    self.state = .table_header;
                     self.token = null;
                 },
                 .literal_string => {
-                    self.state = .table_header;
                     result.tag = .table_key;
-                    result.value = .{
-                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
-                    };
+                    result.span = self.token.?.span.narrow(1);
+                    result.value = .literal_string;
+                    self.state = .table_header;
                     self.token = null;
                 },
                 else => return self.fail(error.UnexpectedToken, "table header not terminated"),
@@ -319,14 +303,15 @@ pub fn next(self: *Parser) Error!?Item {
                     if (self.state == .array_table_header_incomplete) {
                         return self.fail(error.UnexpectedToken, null);
                     }
+                    result.tag = .array_table_header_end;
+                    result.span = self.token.?.span;
                     self.state = .table;
                     self.token = null;
-                    result.tag = .array_table_header_end;
                 },
                 .literal => {
                     result.tag = .array_table_key;
 
-                    const start = self.token.?.loc.start;
+                    const start = self.token.?.span.start;
 
                     if (self.state == .array_table_header_incomplete and
                         self.tokenizer.buffer[start] == '.')
@@ -336,13 +321,13 @@ pub fn next(self: *Parser) Error!?Item {
 
                     var end = start;
 
-                    while (end < self.token.?.loc.end) : (end += 1) {
+                    while (end < self.token.?.span.end) : (end += 1) {
                         const c = self.tokenizer.buffer[end];
                         if (!isBareKey(c)) {
                             switch (c) {
                                 '.' => {
                                     self.state = .array_table_header_incomplete;
-                                    self.token.?.loc.start = end + 1;
+                                    self.token.?.span.start = end + 1;
                                     break;
                                 },
                                 else => return self.fail(error.InvalidCharacter, null),
@@ -350,29 +335,28 @@ pub fn next(self: *Parser) Error!?Item {
                         }
                     }
 
-                    if (end == self.token.?.loc.end) {
+                    if (end == self.token.?.span.end) {
                         self.state = .array_table_header;
                         self.token = null;
-                    } else if (self.token.?.loc.start == self.token.?.loc.end) {
+                    } else if (self.token.?.span.start == self.token.?.span.end) {
                         self.token = null;
                     }
 
-                    result.value = .{ .literal = self.tokenizer.buffer[start..end] };
+                    result.span = .{ .start = start, .end = end };
+                    result.value = .literal;
                 },
                 .string => {
-                    self.state = .array_table_header;
                     result.tag = .array_table_key;
-                    result.value = .{
-                        .string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
-                    };
+                    result.span = self.token.?.span.narrow(1);
+                    result.value = .string;
+                    self.state = .array_table_header;
                     self.token = null;
                 },
                 .literal_string => {
-                    self.state = .array_table_header;
                     result.tag = .array_table_key;
-                    result.value = .{
-                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
-                    };
+                    result.span = self.token.?.span.narrow(1);
+                    result.value = .literal_string;
+                    self.state = .array_table_header;
                     self.token = null;
                 },
                 else => return self.fail(error.UnexpectedToken, "table header not terminated"),
@@ -404,7 +388,7 @@ pub fn next(self: *Parser) Error!?Item {
                 .literal => {
                     result.tag = .key;
 
-                    const start = self.token.?.loc.start;
+                    const start = self.token.?.span.start;
 
                     if (self.state == .key_incomplete and self.tokenizer.buffer[start] == '.') {
                         return self.fail(error.UnexpectedToken, null);
@@ -412,13 +396,13 @@ pub fn next(self: *Parser) Error!?Item {
 
                     var end = start;
 
-                    while (end < self.token.?.loc.end) : (end += 1) {
+                    while (end < self.token.?.span.end) : (end += 1) {
                         const c = self.tokenizer.buffer[end];
                         if (!isBareKey(c)) {
                             switch (c) {
                                 '.' => {
                                     self.state = .key_incomplete;
-                                    self.token.?.loc.start = end + 1;
+                                    self.token.?.span.start = end + 1;
                                     break;
                                 },
                                 else => return self.fail(error.InvalidCharacter, null),
@@ -426,29 +410,28 @@ pub fn next(self: *Parser) Error!?Item {
                         }
                     }
 
-                    if (end == self.token.?.loc.end) {
+                    if (end == self.token.?.span.end) {
                         self.state = .key;
                         self.token = null;
-                    } else if (self.token.?.loc.start == self.token.?.loc.end) {
+                    } else if (self.token.?.span.start == self.token.?.span.end) {
                         self.token = null;
                     }
 
-                    result.value = .{ .literal = self.tokenizer.buffer[start..end] };
+                    result.span = .{ .start = start, .end = end };
+                    result.value = .literal;
                 },
                 .string => {
-                    self.state = .key;
                     result.tag = .key;
-                    result.value = .{
-                        .string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
-                    };
+                    result.span = self.token.?.span.narrow(1);
+                    result.value = .string;
+                    self.state = .key;
                     self.token = null;
                 },
                 .literal_string => {
-                    self.state = .key;
                     result.tag = .key;
-                    result.value = .{
-                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
-                    };
+                    result.span = self.token.?.span.narrow(1);
+                    result.value = .literal_string;
+                    self.state = .key;
                     self.token = null;
                 },
                 else => return self.fail(error.UnexpectedToken, "key not terminated"),
@@ -461,8 +444,8 @@ pub fn next(self: *Parser) Error!?Item {
 
             switch (self.token.?.tag) {
                 .newline => {
-                    if (self.nesting.top()) |nest| {
-                        switch (nest) {
+                    if (self.nesting.top()) |t| {
+                        switch (t) {
                             .array => {
                                 self.token = null;
                                 continue :state .value_start;
@@ -474,10 +457,14 @@ pub fn next(self: *Parser) Error!?Item {
                     return self.fail(error.UnexpectedToken, null);
                 },
                 .double_left_bracket => {
-                    self.state = .value_start;
                     result.tag = .array_start;
+                    result.span = .{
+                        .start = self.token.?.span.start,
+                        .end = self.token.?.span.start + 1,
+                    };
+                    self.state = .value_start;
                     self.token.?.tag = .left_bracket;
-                    self.token.?.loc.start += 1;
+                    self.token.?.span.start += 1;
                     self.nesting.push(.array) catch |err| return self.printFail(
                         err,
                         "exceeded maximum nesting level {d}",
@@ -485,8 +472,9 @@ pub fn next(self: *Parser) Error!?Item {
                     );
                 },
                 .left_bracket => {
-                    self.state = .value_start;
                     result.tag = .array_start;
+                    result.span = self.token.?.span;
+                    self.state = .value_start;
                     self.token = null;
                     self.nesting.push(.array) catch |err| return self.printFail(
                         err,
@@ -495,14 +483,17 @@ pub fn next(self: *Parser) Error!?Item {
                     );
                 },
                 .double_right_bracket => {
-                    if (self.nesting.top()) |nest| {
-                        switch (nest) {
+                    if (self.nesting.pop()) |p| {
+                        switch (p) {
                             .array => {
+                                result.tag = .array_end;
+                                result.span = .{
+                                    .start = self.token.?.span.start,
+                                    .end = self.token.?.span.start + 1,
+                                };
                                 self.state = .value_end;
                                 self.token.?.tag = .right_bracket;
-                                self.token.?.loc.start += 1;
-                                assert(self.nesting.pop().? == .array);
-                                result.tag = .array_end;
+                                self.token.?.span.start += 1;
                                 break :state;
                             },
                             else => return self.fail(error.UnexpectedToken, null),
@@ -512,25 +503,25 @@ pub fn next(self: *Parser) Error!?Item {
                     return self.fail(error.UnexpectedToken, null);
                 },
                 .right_bracket => {
-                    if (self.nesting.top()) |nest| {
-                        switch (nest) {
+                    if (self.nesting.pop()) |p| {
+                        switch (p) {
                             .array => {
+                                result.tag = .array_end;
+                                result.span = self.token.?.span;
                                 self.state = .value_end;
                                 self.token = null;
-                                assert(self.nesting.pop().? == .array);
-                                result.tag = .array_end;
+                                break :state;
                             },
                             .inline_table => return self.fail(error.UnexpectedToken, null),
                         }
-
-                        break :state;
                     }
 
                     return self.fail(error.UnexpectedToken, "array not closed");
                 },
                 .left_brace => {
-                    self.state = .inline_table;
                     result.tag = .inline_table_start;
+                    result.span = self.token.?.span;
+                    self.state = .inline_table;
                     self.token = null;
                     self.nesting.push(.inline_table) catch |err| return self.printFail(
                         err,
@@ -539,50 +530,58 @@ pub fn next(self: *Parser) Error!?Item {
                     );
                 },
                 .string => {
-                    self.state = .value_end;
                     result.tag = .value;
-                    result.value = .{
-                        .string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
-                    };
+                    result.span = self.token.?.span.narrow(1);
+                    result.value = .string;
+                    self.state = .value_end;
                     self.token = null;
                 },
                 .multiline_string => {
-                    self.state = .value_end;
                     result.tag = .value;
-                    result.value = .{
-                        .multiline_string = self.tokenizer.buffer[self.token.?.loc.start + 3 .. self.token.?.loc.end - 3],
-                    };
+                    result.span = self.token.?.span.narrow(3);
+                    result.value = .multiline_string;
+                    self.state = .value_end;
                     self.token = null;
                 },
                 .literal_string => {
-                    self.state = .value_end;
                     result.tag = .value;
-                    result.value = .{
-                        .literal_string = self.tokenizer.buffer[self.token.?.loc.start + 1 .. self.token.?.loc.end - 1],
-                    };
+                    result.span = self.token.?.span.narrow(1);
+                    result.value = .literal_string;
+                    self.state = .value_end;
                     self.token = null;
                 },
                 .multiline_literal_string => {
-                    self.state = .value_end;
                     result.tag = .value;
-                    result.value = .{
-                        .multiline_literal_string = self.tokenizer.buffer[self.token.?.loc.start + 3 .. self.token.?.loc.end - 3],
-                    };
+                    result.span = self.token.?.span.narrow(3);
+                    result.value = .multiline_literal_string;
+                    self.state = .value_end;
                     self.token = null;
                 },
                 .literal => {
-                    // TODO: Consider if the parsing (up until floats) could be
-                    // done using a single loop through the characters in
-                    // the buffer.
-                    self.state = .value_end;
+                    // TODO: Consider if the parsing (up until floats) could be done using a single
+                    // loop through the characters in the buffer.
                     result.tag = .value;
+                    self.state = .value_end;
 
-                    var buf = self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end];
-                    buf = std.mem.trim(u8, buf, " \t\r\n");
+                    var start = self.token.?.span.start;
+                    var end = self.token.?.span.end;
+                    while (start < end and std.mem.findScalar(
+                        u8,
+                        " \t\r\n",
+                        self.tokenizer.buffer[start],
+                    )) : (start += 1) {}
+                    while (end > start and std.mem.findScalar(
+                        u8,
+                        " \t\r\n",
+                        self.tokenizer.buffer[end],
+                    )) : (end -= 1) {}
 
-                    if (buf.len == 0) {
+                    if (start == end) {
                         return self.fail(error.UnexpectedToken, null);
                     }
+
+                    const buf = self.tokenizer.buffer[start..end];
+                    result.span = .{ .start = start, .end = end };
 
                     if (std.mem.eql(u8, buf, "true")) {
                         result.value = .{ .boolean = true };
@@ -627,7 +626,10 @@ pub fn next(self: *Parser) Error!?Item {
                         std.ascii.isDigit(buf[3]) and
                         buf[4] == '-')
                     {
-                        result.value = self.parseDatetime(buf) catch |err| return switch (err) {
+                        // Datetimes may be broken into two tokens, breaking the earlier handling of
+                        // the span. The result needs to be passed into the function and modified
+                        // there.
+                        self.parseDatetime(&result, buf) catch |err| return switch (err) {
                             error.Reported => err,
                             else => self.fail(err, null),
                         };
@@ -641,7 +643,7 @@ pub fn next(self: *Parser) Error!?Item {
                         std.ascii.isDigit(buf[4]) and
                         buf[2] == ':')
                     {
-                        result.value = self.parseTime(buf) catch |err| return switch (err) {
+                        result.value = self.parseTime(buf, null) catch |err| return switch (err) {
                             error.Reported => err,
                             else => self.fail(err, null),
                         };
@@ -663,53 +665,72 @@ pub fn next(self: *Parser) Error!?Item {
 
             switch (self.token.?.tag) {
                 .end_of_file => {
-                    if (self.nesting.top()) |nest| {
-                        switch (nest) {
+                    if (self.nesting.top()) |t| {
+                        switch (t) {
                             .array => return self.fail(error.UnexpectedEnd, "array not closed"),
                             .inline_table => return self.fail(error.UnexpectedEnd, "inline table not closed"),
                         }
                     }
 
-                    self.token = null;
                     assert(self.nesting.len == 0);
+                    self.token = null;
                     return null;
                 },
                 .newline => {
-                    if (self.nesting.top()) |nest| {
-                        switch (nest) {
+                    if (self.nesting.top()) |t| {
+                        switch (t) {
                             .array => {
                                 // When inside array, a newline is allowed if
                                 // the array is terminated after that.
                                 self.token = try self.tokenizer.next();
                                 retry: switch (self.token.?.tag) {
                                     .double_right_bracket => {
+                                        const p = self.nesting.pop().?;
+                                        assert(p == .array);
+
+                                        result.tag = .array_end;
+                                        result.span = .{
+                                            .start = self.token.?.span.start,
+                                            .end = self.token.?.span.start + 1,
+                                        };
+
                                         self.state = .value_end;
                                         self.token.?.tag = .right_bracket;
-                                        self.token.?.loc.start += 1;
-                                        assert(self.nesting.pop().? == .array);
-                                        result.tag = .array_end;
+                                        self.token.?.span.start += 1;
                                     },
                                     .right_bracket => {
+                                        const p = self.nesting.pop().?;
+                                        assert(p == .array);
+
+                                        result.tag = .array_end;
+                                        result.span = self.token.?.span;
+
                                         self.state = .value_end;
                                         self.token = null;
-                                        assert(self.nesting.pop().? == .array);
-                                        result.tag = .array_end;
                                     },
                                     .newline => {
                                         self.token = try self.tokenizer.next();
                                         continue :retry self.token.?.tag;
                                     },
-                                    else => return self.fail(error.UnexpectedToken, "array not closed"),
+                                    else => return self.fail(
+                                        error.UnexpectedToken,
+                                        "array not closed",
+                                    ),
                                 }
                             },
                             .inline_table => {
                                 self.token = try self.tokenizer.next();
                                 retry: switch (self.token.?.tag) {
                                     .right_brace => if (self.features.inline_table_newlines) {
+                                        const p = self.nesting.pop().?;
+                                        assert(p == .inline_table);
+
+                                        result.tag = .inline_table_end;
+                                        result.span = self.token.?.span;
+
                                         self.state = .value_end;
                                         self.token = null;
-                                        assert(self.nesting.pop().? == .inline_table);
-                                        result.tag = .inline_table_end;
+
                                         break :state;
                                     } else {
                                         return self.fail(error.UnexpectedToken, null);
@@ -733,14 +754,17 @@ pub fn next(self: *Parser) Error!?Item {
                     continue :state .table;
                 },
                 .double_right_bracket => {
-                    if (self.nesting.top()) |nest| {
-                        switch (nest) {
+                    if (self.nesting.pop()) |p| {
+                        switch (p) {
                             .array => {
+                                result.tag = .array_end;
+                                result.span = .{
+                                    .start = self.token.?.span.start,
+                                    .end = self.token.?.span.start + 1,
+                                };
                                 self.state = .value_end;
                                 self.token.?.tag = .right_bracket;
-                                self.token.?.loc.start += 1;
-                                assert(self.nesting.pop().? == .array);
-                                result.tag = .array_end;
+                                self.token.?.span.start += 1;
                                 break :state;
                             },
                             else => return self.fail(error.UnexpectedToken, null),
@@ -750,14 +774,13 @@ pub fn next(self: *Parser) Error!?Item {
                     return self.fail(error.UnexpectedToken, null);
                 },
                 .right_bracket => {
-                    if (self.nesting.top()) |nest| {
-                        switch (nest) {
+                    if (self.nesting.pop()) |p| {
+                        switch (p) {
                             .array => {
+                                result.tag = .array_end;
+                                result.span = self.token.?.span;
                                 self.state = .value_end;
                                 self.token = null;
-                                const n = self.nesting.pop().?;
-                                assert(n == .array);
-                                result.tag = .array_end;
                                 break :state;
                             },
                             else => return self.fail(error.UnexpectedToken, null),
@@ -767,13 +790,13 @@ pub fn next(self: *Parser) Error!?Item {
                     return self.fail(error.UnexpectedToken, null);
                 },
                 .right_brace => {
-                    if (self.nesting.top()) |nest| {
-                        switch (nest) {
+                    if (self.nesting.pop()) |p| {
+                        switch (p) {
                             .inline_table => {
+                                result.tag = .inline_table_end;
+                                result.span = self.token.?.span;
                                 self.state = .value_end;
                                 self.token = null;
-                                assert(self.nesting.pop().? == .inline_table);
-                                result.tag = .inline_table_end;
                                 break :state;
                             },
                             else => return self.fail(error.UnexpectedToken, null),
@@ -783,24 +806,35 @@ pub fn next(self: *Parser) Error!?Item {
                     return self.fail(error.UnexpectedToken, null);
                 },
                 .comma => {
-                    if (self.nesting.top()) |nest| {
-                        switch (nest) {
+                    if (self.nesting.top()) |t| {
+                        switch (t) {
                             .array => {
                                 self.token = try self.tokenizer.next();
                                 retry: switch (self.token.?.tag) {
                                     .double_right_bracket => {
+                                        const p = self.nesting.pop().?;
+                                        assert(p == .array);
+
+                                        result.tag = .array_end;
+                                        result.span = .{
+                                            .start = self.token.?.span.start,
+                                            .end = self.token.?.span.start + 1,
+                                        };
+
                                         self.state = .value_end;
                                         self.token.?.tag = .right_bracket;
-                                        self.token.?.loc.start += 1;
-                                        assert(self.nesting.pop().? == .array);
-                                        result.tag = .array_end;
+                                        self.token.?.span.start += 1;
                                         break :state;
                                     },
                                     .right_bracket => {
+                                        const p = self.nesting.pop().?;
+                                        assert(p == .array);
+
+                                        result.tag = .array_end;
+                                        result.span = self.token.?.span;
+
                                         self.state = .value_end;
                                         self.token = null;
-                                        assert(self.nesting.pop().? == .array);
-                                        result.tag = .array_end;
                                         break :state;
                                     },
                                     .newline => {
@@ -825,10 +859,14 @@ pub fn next(self: *Parser) Error!?Item {
                                 self.token = try self.tokenizer.next();
                                 retry: switch (self.token.?.tag) {
                                     .right_brace => if (self.features.inline_table_trailing_comma) {
+                                        const p = self.nesting.pop().?;
+                                        assert(p == .inline_table);
+
+                                        result.tag = .inline_table_end;
+                                        result.span = self.token.?.span;
+
                                         self.state = .value_end;
                                         self.token = null;
-                                        assert(self.nesting.pop().? == .inline_table);
-                                        result.tag = .inline_table_end;
                                         break :state;
                                     } else {
                                         return self.fail(error.UnexpectedToken, null);
@@ -863,10 +901,14 @@ pub fn next(self: *Parser) Error!?Item {
 
             switch (self.token.?.tag) {
                 .right_brace => {
+                    const p = self.nesting.pop().?;
+                    assert(p == .inline_table);
+
+                    result.tag = .inline_table_end;
+                    result.span = self.token.?.span;
+
                     self.state = .value_end;
                     self.token = null;
-                    assert(self.nesting.pop().? == .inline_table);
-                    result.tag = .inline_table_end;
                     break :state;
                 },
                 .newline => if (self.features.inline_table_newlines) {
@@ -887,78 +929,68 @@ pub fn next(self: *Parser) Error!?Item {
     return result;
 }
 
-fn isBareKey(c: u8) bool {
-    switch (c) {
-        '-', '0'...'9', 'A'...'Z', '_', 'a'...'z' => return true,
-        else => return false,
-    }
-}
-
-fn isLeapYear(year: u16) bool {
-    return (year % 4 == 0 and year % 100 != 0) or (year % 400 == 0);
-}
-
-fn daysInMonth(year: u16, month: u8) ?u8 {
-    return switch (month) {
-        1, 3, 5, 7, 8, 10, 12 => 31,
-        4, 6, 9, 11 => 30,
-        2 => if (isLeapYear(year)) 29 else 28,
-        else => null,
-    };
-}
-
-fn validateDate(self: *Parser, year: u16, month: u8, day: u8) Error!void {
-    const max_day = daysInMonth(year, month) orelse return self.fail(error.InvalidDatetime, null);
-    if (day == 0 or day > max_day) {
-        return self.fail(error.InvalidDatetime, null);
-    }
-}
-
-fn validateTime(self: *Parser, hour: u8, minute: u8, second: ?u8, err: Error) Error!void {
-    if (hour > 23 or minute > 59) {
-        return self.fail(err, null);
-    }
-
-    if (second) |s| {
-        // RFC 3339 permits 60 to account for leap seconds.
-        if (s > 60) {
-            return self.fail(err, null);
-        }
-    }
-}
-
-fn parseDatetime(self: *Parser, s: []const u8) Error!Item.Value {
+fn parseDatetime(self: *Parser, result: *Item, s: []const u8) Error!void {
     var buf = s;
 
     if (buf.len < 10 or buf[4] != '-' or buf[7] != '-') {
         return self.fail(error.InvalidDatetime, null);
     }
 
-    const year = parseDatetimeDigits(u16, 4, buf[0..4]) catch return self.fail(error.InvalidDatetime, null);
-    const month = parseDatetimeDigits(u8, 2, buf[5..7]) catch return self.fail(error.InvalidDatetime, null);
-    const day = parseDatetimeDigits(u8, 2, buf[8..10]) catch return self.fail(error.InvalidDatetime, null);
-    try self.validateDate(year, month, day);
+    const year = parseDatetimeDigits(u16, 4, buf[0..4]) catch {
+        return self.fail(error.InvalidDatetime, null);
+    };
+    const month = parseDatetimeDigits(u8, 2, buf[5..7]) catch {
+        return self.fail(error.InvalidDatetime, null);
+    };
+    const day = parseDatetimeDigits(u8, 2, buf[8..10]) catch {
+        return self.fail(error.InvalidDatetime, null);
+    };
 
-    // Due to how the tokenizer works, we need to check if the next token
-    // continues the datetime.
+    const max_day = switch (month) {
+        1, 3, 5, 7, 8, 10, 12 => 31,
+        4, 6, 9, 11 => 30,
+        2 => if ((year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)) 29 else 28,
+        else => self.fail(error.InvalidDatetime, null),
+    };
+    if (day == 0 or day > max_day) {
+        return self.fail(error.InvalidDatetime, null);
+    }
+
+    // Due to how the tokenizer works, we need to check if the next token continues the datetime.
     if (buf.len == 10) {
-        const date_end = self.token.?.loc.end;
+        const date_end = self.token.?.span.end;
         self.token = try self.tokenizer.next();
         switch (self.token.?.tag) {
             .literal => { // continue datetime
-                if (self.token.?.loc.start != date_end + 1 or self.tokenizer.buffer[date_end] != ' ') {
+                const start = self.token.?.span.start;
+
+                if (start != date_end + 1 or self.tokenizer.buffer[date_end] != ' ') {
                     return self.fail(error.InvalidDatetime, null);
                 }
-                buf = std.mem.trim(u8, self.tokenizer.buffer[self.token.?.loc.start..self.token.?.loc.end], " \t\r\n");
+
+                var end = self.token.?.span.end;
+                while (end > start and std.mem.findScalar(
+                    u8,
+                    " \t\r\n",
+                    self.tokenizer.buffer[end],
+                )) : (end -= 1) {}
+
+                if (start == end) {
+                    return self.fail(error.UnexpectedToken, null);
+                }
+
+                buf = self.tokenizer.buffer[start..end];
+                result.span.end = end;
             },
             else => {
-                return .{
+                result.value = .{
                     .local_date = .{
                         .year = year,
                         .month = month,
                         .day = day,
                     },
                 };
+                return;
             },
         }
     } else if (buf[10] == 'T' or buf[10] == 't') {
@@ -968,56 +1000,16 @@ fn parseDatetime(self: *Parser, s: []const u8) Error!Item.Value {
         return self.fail(error.InvalidDatetime, null);
     }
 
-    if (buf.len < 5 or buf[2] != ':') {
-        return self.fail(error.InvalidDatetime, null);
+    var consumed: u8 = 0;
+    const time = self.parseTime(buf, &consumed) catch |err| return switch (err) {
+        error.InvalidTime => error.InvalidDatetime,
+        else => err,
+    };
+
+    if (consumed < buf.len) {
+        buf = buf[consumed..];
     }
 
-    const hour = parseDatetimeDigits(u8, 2, buf[0..2]) catch return self.fail(error.InvalidDatetime, null);
-    const minute = parseDatetimeDigits(u8, 2, buf[3..5]) catch return self.fail(error.InvalidDatetime, null);
-    const second = blk: {
-        if (buf.len >= 8 and buf[5] == ':') {
-            break :blk parseDatetimeDigits(u8, 2, buf[6..8]) catch return self.fail(error.InvalidDatetime, null);
-        } else if (!self.features.optional_seconds) {
-            return self.fail(error.InvalidDatetime, "missing seconds");
-        }
-
-        break :blk null;
-    };
-
-    buf = if (second == null) buf[5..] else buf[8..];
-    try self.validateTime(hour, minute, second, error.InvalidDatetime);
-
-    const nano = blk: {
-        if (buf.len > 1 and buf[0] == '.') {
-            if (second == null) {
-                return self.fail(error.InvalidDatetime, "no seconds before fraction");
-            }
-
-            buf = buf[1..];
-            if (buf.len == 0 or !std.ascii.isDigit(buf[0])) {
-                return self.fail(error.InvalidDatetime, null);
-            }
-
-            var n: u32 = 0;
-            var i: usize = 0;
-            while (i < buf.len and std.ascii.isDigit(buf[i])) : (i += 1) {
-                if (i < 9) {
-                    n = n * 10 + (buf[i] - '0');
-                }
-            }
-
-            buf = buf[i..];
-
-            var significant_digits: usize = @min(i, 9);
-            while (significant_digits < 9) : (significant_digits += 1) {
-                n *= 10;
-            }
-
-            break :blk n;
-        }
-
-        break :blk null;
-    };
     const tz = blk: {
         if (buf.len == 0) {
             break :blk null;
@@ -1027,8 +1019,12 @@ fn parseDatetime(self: *Parser, s: []const u8) Error!Item.Value {
         }
         if (buf.len == 6 and (buf[0] == '-' or buf[0] == '+') and buf[3] == ':') {
             const sign: i16 = if (buf[0] == '-') -1 else 1;
-            const h: i16 = parseDatetimeDigits(u8, 2, buf[1..3]) catch return self.fail(error.InvalidDatetime, null);
-            const m: i16 = parseDatetimeDigits(u8, 2, buf[4..6]) catch return self.fail(error.InvalidDatetime, null);
+            const h: i16 = parseDatetimeDigits(u8, 2, buf[1..3]) catch {
+                return self.fail(error.InvalidDatetime, null);
+            };
+            const m: i16 = parseDatetimeDigits(u8, 2, buf[4..6]) catch {
+                return self.fail(error.InvalidDatetime, null);
+            };
             if (h > 23 or m > 59) {
                 return self.fail(error.InvalidDatetime, null);
             }
@@ -1040,46 +1036,62 @@ fn parseDatetime(self: *Parser, s: []const u8) Error!Item.Value {
     self.token = null;
 
     if (tz) |t| {
-        return .{
+        result.value = .{
             .datetime = .{
                 .year = year,
                 .month = month,
                 .day = day,
-                .hour = hour,
-                .minute = minute,
-                .second = second orelse 0,
-                .nano = nano,
+                .hour = time.hour,
+                .minute = time.minute,
+                .second = time.second,
+                .nano = time.nano,
                 .tz = t,
             },
         };
+        return;
     }
 
-    return .{
+    result.value = .{
         .local_datetime = .{
             .year = year,
             .month = month,
             .day = day,
-            .hour = hour,
-            .minute = minute,
-            .second = second orelse 0,
-            .nano = nano,
+            .hour = time.hour,
+            .minute = time.minute,
+            .second = time.second,
+            .nano = time.nano,
             .tz = null,
         },
     };
 }
 
-fn parseTime(self: *Parser, s: []const u8) Error!Item.Value {
+fn parseTime(self: *Parser, s: []const u8, consumed: ?*u8) Error!Item.Value {
     var buf = s;
 
     if (buf.len < 5 or buf[2] != ':') {
         return self.fail(error.InvalidTime, null);
     }
 
-    const hour = parseDatetimeDigits(u8, 2, buf[0..2]) catch return self.fail(error.InvalidTime, null);
-    const minute = parseDatetimeDigits(u8, 2, buf[3..5]) catch return self.fail(error.InvalidTime, null);
+    const hour = parseDatetimeDigits(u8, 2, buf[0..2]) catch {
+        return self.fail(error.InvalidTime, null);
+    };
+    const minute = parseDatetimeDigits(u8, 2, buf[3..5]) catch {
+        return self.fail(error.InvalidTime, null);
+    };
+
+    if (consumed) |c| {
+        c.* += 5;
+    }
+
     const second = blk: {
         if (buf.len >= 8 and buf[5] == ':') {
-            break :blk parseDatetimeDigits(u8, 2, buf[6..8]) catch return self.fail(error.InvalidTime, null);
+            if (consumed) |c| {
+                c.* += 3;
+            }
+
+            break :blk parseDatetimeDigits(u8, 2, buf[6..8]) catch {
+                return self.fail(error.InvalidTime, null);
+            };
         } else if (!self.features.optional_seconds) {
             return self.fail(error.InvalidTime, "missing seconds");
         }
@@ -1088,7 +1100,17 @@ fn parseTime(self: *Parser, s: []const u8) Error!Item.Value {
     };
 
     buf = if (second == null) buf[5..] else buf[8..];
-    try self.validateTime(hour, minute, second, error.InvalidTime);
+
+    if (hour > 23 or minute > 59) {
+        return self.fail(error.InvalidTime, null);
+    }
+
+    if (second) |sec| {
+        // RFC 3339 permits 60 to account for leap seconds.
+        if (sec > 60) {
+            return self.fail(error.InvalidTime, null);
+        }
+    }
 
     const nano = blk: {
         if (buf.len > 1 and buf[0] == '.') {
@@ -1111,6 +1133,10 @@ fn parseTime(self: *Parser, s: []const u8) Error!Item.Value {
 
             buf = buf[i..];
 
+            if (consumed) |c| {
+                c.* += i;
+            }
+
             var significant_digits: usize = @min(i, 9);
             while (significant_digits < 9) : (significant_digits += 1) {
                 n *= 10;
@@ -1122,11 +1148,14 @@ fn parseTime(self: *Parser, s: []const u8) Error!Item.Value {
         break :blk null;
     };
 
-    if (buf.len != 0) {
-        return self.fail(error.InvalidTime, null);
+    if (consumed == null) {
+        if (buf.len != 0) {
+            return self.fail(error.InvalidTime, null);
+        }
+
+        self.token = null;
     }
 
-    self.token = null;
     return .{
         .local_time = .{
             .hour = hour,
@@ -1135,45 +1164,6 @@ fn parseTime(self: *Parser, s: []const u8) Error!Item.Value {
             .nano = nano,
         },
     };
-}
-
-fn parseDatetimeDigits(comptime T: type, comptime n: usize, buffer: []const u8) error{ InvalidCharacter, Underflow }!T {
-    comptime {
-        if (n < 1) {
-            @compileError("number of digits must be greater than 0");
-        }
-
-        const info = @typeInfo(T);
-        if (info != .int or info.int.signedness != .unsigned) {
-            @compileError("parseDatetimeDigits requires an unsigned integer type");
-        }
-
-        const max_digits = switch (T) {
-            u8 => 2,
-            u16 => 4,
-            u32 => 9,
-            else => @compileError("parseDatetimeDigits requires u8, u16, or u32"),
-        };
-
-        if (n > max_digits) {
-            @compileError(std.fmt.comptimePrint("{s} is too small for {d} digits", .{ @typeName(T), n }));
-        }
-    }
-
-    if (n > buffer.len) {
-        return error.Underflow;
-    }
-
-    var result: T = 0;
-    for (0..n) |i| {
-        if (!std.ascii.isDigit(buffer[i])) {
-            return error.InvalidCharacter;
-        }
-
-        result = result * 10 + @as(T, buffer[i] - '0');
-    }
-
-    return result;
 }
 
 fn parseNumber(self: *Parser, buf: []const u8) Error!Item.Value {
@@ -1196,9 +1186,6 @@ fn parseNumber(self: *Parser, buf: []const u8) Error!Item.Value {
         break :blk .pos;
     };
 
-    // We can have the base as the right type right away to avoid casting it. We
-    // control all of the types in this implementation so there is no risk of
-    // invalid values.
     const base: Int = blk: {
         if (buf.len > i + 2 and buf[i] == '0') {
             switch (buf[i + 1]) {
@@ -1289,6 +1276,7 @@ fn parseNumber(self: *Parser, buf: []const u8) Error!Item.Value {
         int = ov[0];
     }
 
+    // TODO: Should we scan if the number is a float right at the beginning before integer parsing?
     if (!float_found) {
         self.token = null;
         return .{ .int = int };
@@ -1298,8 +1286,8 @@ fn parseNumber(self: *Parser, buf: []const u8) Error!Item.Value {
         return self.fail(error.InvalidCharacter, "floating-point values may only be decimal");
     }
 
-    // Just parse the full string again. Otherwise, we'd risk losing precision
-    // over probably negligible performance gains.
+    // Just parse the full string again. Otherwise, we'd risk losing precision over probably
+    // negligible performance gains.
     self.token = null;
     return .{ .float = std.fmt.parseFloat(Float, buf) catch |err| return self.fail(err, null) };
 }
@@ -1336,6 +1324,55 @@ fn fail(self: Parser, err: Error, msg: ?[]const u8) Error {
 fn printFail(self: Parser, err: Error, comptime fmt: []const u8, args: anytype) Error {
     assert(err != error.Reported);
     return self.fail(err, std.fmt.comptimePrint(fmt, args));
+}
+
+fn parseDatetimeDigits(comptime T: type, comptime n: usize, buffer: []const u8) error{
+    InvalidCharacter,
+    Underflow,
+}!T {
+    comptime {
+        if (n < 1) {
+            @compileError("number of digits must be greater than 0");
+        }
+
+        const info = @typeInfo(T);
+        if (info != .int or info.int.signedness != .unsigned) {
+            @compileError("parseDatetimeDigits requires an unsigned integer type");
+        }
+
+        const max_digits = switch (T) {
+            u8 => 2,
+            u16 => 4,
+            u32 => 9,
+            else => @compileError("parseDatetimeDigits requires u8, u16, or u32"),
+        };
+
+        if (n > max_digits) {
+            @compileError(std.fmt.comptimePrint("{s} is too small for {d} digits", .{ @typeName(T), n }));
+        }
+    }
+
+    if (n > buffer.len) {
+        return error.Underflow;
+    }
+
+    var result: T = 0;
+    for (0..n) |i| {
+        if (!std.ascii.isDigit(buffer[i])) {
+            return error.InvalidCharacter;
+        }
+
+        result = result * 10 + @as(T, buffer[i] - '0');
+    }
+
+    return result;
+}
+
+fn isBareKey(c: u8) bool {
+    switch (c) {
+        '-', '0'...'9', 'A'...'Z', '_', 'a'...'z' => return true,
+        else => return false,
+    }
 }
 
 test {

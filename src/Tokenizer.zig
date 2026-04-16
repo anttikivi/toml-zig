@@ -21,6 +21,7 @@ const assert = std.debug.assert;
 
 const Diagnostics = @import("root.zig").Diagnostics;
 const Position = @import("root.zig").Position;
+const Span = @import("root.zig").Span;
 const Utf8State = @import("root.zig").Utf8State;
 const default_version = @import("toml.zig").default_version;
 const Features = @import("toml.zig").Features;
@@ -42,12 +43,7 @@ pub const Options = struct {
 
 pub const Token = struct {
     tag: Tag,
-    loc: Loc,
-
-    pub const Loc = struct {
-        start: usize,
-        end: usize,
-    };
+    span: Span,
 
     pub const Tag = enum {
         comment,
@@ -123,7 +119,7 @@ pub fn init(buffer: []const u8, options: Options) Tokenizer {
 pub fn next(self: *Tokenizer) Error!Token {
     var result: Token = .{
         .tag = undefined,
-        .loc = .{
+        .span = .{
             .start = self.index,
             .end = undefined,
         },
@@ -133,7 +129,7 @@ pub fn next(self: *Tokenizer) Error!Token {
         .start => switch (self.nextByte()) {
             0 => if (self.index >= self.buffer.len) {
                 result.tag = .end_of_file;
-                result.loc = .{
+                result.span = .{
                     .start = self.index,
                     .end = self.index,
                 };
@@ -202,7 +198,7 @@ pub fn next(self: *Tokenizer) Error!Token {
                         // a carriage return and let the next tokenizer run
                         // handle checking it.
                         '\n', '\r' => if (!self.comment_tokens) {
-                            result.loc.start = self.index;
+                            result.span.start = self.index;
                             continue :state .start;
                         },
                         '\t', 0x20...0x7e => continue :utf .start, // printable characters
@@ -277,7 +273,7 @@ pub fn next(self: *Tokenizer) Error!Token {
             switch (self.nextByte()) {
                 '\t', ' ' => continue :state .whitespace,
                 else => if (!self.whitespace_tokens) {
-                    result.loc.start = self.index;
+                    result.span.start = self.index;
                     continue :state .start;
                 },
             }
@@ -882,7 +878,7 @@ pub fn next(self: *Tokenizer) Error!Token {
         },
     }
 
-    result.loc.end = self.index;
+    result.span.end = self.index;
     return result;
 }
 
