@@ -192,7 +192,7 @@ pub fn next(self: *Parser) Error!?Item {
         .invalid => return self.fail(error.InvalidState, null),
         .table => {
             if (self.token == null) {
-                self.token = self.token orelse try self.tokenizer.next();
+                self.token = try self.tokenizer.next();
             }
 
             assert(self.nesting.len == 0);
@@ -856,7 +856,7 @@ pub fn next(self: *Parser) Error!?Item {
         },
         .inline_table => {
             if (self.token == null) {
-                self.token = self.token orelse try self.tokenizer.next();
+                self.token = try self.tokenizer.next();
             }
 
             assert(self.nesting.len > 0);
