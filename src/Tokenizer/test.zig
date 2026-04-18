@@ -28,14 +28,14 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .newline,
-                .loc = .{
+                .span = .{
                     .start = 0,
                     .end = 1,
                 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{
+                .span = .{
                     .start = 1,
                     .end = 1,
                 },
@@ -47,11 +47,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 7 },
+                .span = .{ .start = 0, .end = 7 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 7, .end = 7 },
+                .span = .{ .start = 7, .end = 7 },
             },
         },
     },
@@ -60,11 +60,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal_string,
-                .loc = .{ .start = 0, .end = 7 },
+                .span = .{ .start = 0, .end = 7 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 7, .end = 7 },
+                .span = .{ .start = 7, .end = 7 },
             },
         },
     },
@@ -73,11 +73,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .multiline_string,
-                .loc = .{ .start = 0, .end = 6 },
+                .span = .{ .start = 0, .end = 6 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 6, .end = 6 },
+                .span = .{ .start = 6, .end = 6 },
             },
         },
     },
@@ -86,11 +86,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .multiline_literal_string,
-                .loc = .{ .start = 0, .end = 7 },
+                .span = .{ .start = 0, .end = 7 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 7, .end = 7 },
+                .span = .{ .start = 7, .end = 7 },
             },
         },
     },
@@ -104,11 +104,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .multiline_string,
-                .loc = .{ .start = 0, .end = 20 },
+                .span = .{ .start = 0, .end = 20 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 20, .end = 20 },
+                .span = .{ .start = 20, .end = 20 },
             },
         },
     },
@@ -122,11 +122,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .multiline_literal_string,
-                .loc = .{ .start = 0, .end = 20 },
+                .span = .{ .start = 0, .end = 20 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 20, .end = 20 },
+                .span = .{ .start = 20, .end = 20 },
             },
         },
     },
@@ -135,11 +135,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .newline,
-                .loc = .{ .start = 0, .end = 2 },
+                .span = .{ .start = 0, .end = 2 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 2, .end = 2 },
+                .span = .{ .start = 2, .end = 2 },
             },
         },
     },
@@ -148,15 +148,15 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .newline,
-                .loc = .{ .start = 2, .end = 3 },
+                .span = .{ .start = 2, .end = 3 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 5, .end = 6 },
+                .span = .{ .start = 5, .end = 6 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 6, .end = 6 },
+                .span = .{ .start = 6, .end = 6 },
             },
         },
     },
@@ -165,23 +165,23 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .comment,
-                .loc = .{ .start = 0, .end = 2 },
+                .span = .{ .start = 0, .end = 2 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 2, .end = 3 },
+                .span = .{ .start = 2, .end = 3 },
             },
             .{
                 .tag = .comment,
-                .loc = .{ .start = 3, .end = 5 },
+                .span = .{ .start = 3, .end = 5 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 5, .end = 6 },
+                .span = .{ .start = 5, .end = 6 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 6, .end = 6 },
+                .span = .{ .start = 6, .end = 6 },
             },
         },
         .comment_tokens = true,
@@ -191,11 +191,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .newline,
-                .loc = .{ .start = 2, .end = 3 },
+                .span = .{ .start = 2, .end = 3 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 3, .end = 3 },
+                .span = .{ .start = 3, .end = 3 },
             },
         },
     },
@@ -204,15 +204,15 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 0, .end = 2 },
+                .span = .{ .start = 0, .end = 2 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 2, .end = 3 },
+                .span = .{ .start = 2, .end = 3 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 3, .end = 3 },
+                .span = .{ .start = 3, .end = 3 },
             },
         },
         .whitespace_tokens = true,
@@ -222,11 +222,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 3, .end = 3 },
+                .span = .{ .start = 3, .end = 3 },
             },
         },
     },
@@ -235,11 +235,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 8 },
+                .span = .{ .start = 0, .end = 8 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 8, .end = 8 },
+                .span = .{ .start = 8, .end = 8 },
             },
         },
     },
@@ -248,11 +248,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 5 },
+                .span = .{ .start = 0, .end = 5 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 5, .end = 5 },
+                .span = .{ .start = 5, .end = 5 },
             },
         },
     },
@@ -261,11 +261,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 5 },
+                .span = .{ .start = 0, .end = 5 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 5, .end = 5 },
+                .span = .{ .start = 5, .end = 5 },
             },
         },
     },
@@ -274,11 +274,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 3, .end = 3 },
+                .span = .{ .start = 3, .end = 3 },
             },
         },
     },
@@ -287,11 +287,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 3, .end = 3 },
+                .span = .{ .start = 3, .end = 3 },
             },
         },
     },
@@ -300,11 +300,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 5 },
+                .span = .{ .start = 0, .end = 5 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 5, .end = 5 },
+                .span = .{ .start = 5, .end = 5 },
             },
         },
     },
@@ -313,11 +313,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 6 },
+                .span = .{ .start = 0, .end = 6 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 6, .end = 6 },
+                .span = .{ .start = 6, .end = 6 },
             },
         },
     },
@@ -326,11 +326,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 5 },
+                .span = .{ .start = 0, .end = 5 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 5, .end = 5 },
+                .span = .{ .start = 5, .end = 5 },
             },
         },
     },
@@ -339,11 +339,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 10 },
+                .span = .{ .start = 0, .end = 10 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 10, .end = 10 },
+                .span = .{ .start = 10, .end = 10 },
             },
         },
     },
@@ -352,11 +352,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 4 },
+                .span = .{ .start = 0, .end = 4 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 4, .end = 4 },
+                .span = .{ .start = 4, .end = 4 },
             },
         },
     },
@@ -365,11 +365,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 5 },
+                .span = .{ .start = 0, .end = 5 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 5, .end = 5 },
+                .span = .{ .start = 5, .end = 5 },
             },
         },
     },
@@ -378,11 +378,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 4 },
+                .span = .{ .start = 0, .end = 4 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 4, .end = 4 },
+                .span = .{ .start = 4, .end = 4 },
             },
         },
     },
@@ -391,11 +391,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 3, .end = 3 },
+                .span = .{ .start = 3, .end = 3 },
             },
         },
     },
@@ -404,11 +404,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 10 },
+                .span = .{ .start = 0, .end = 10 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 10, .end = 10 },
+                .span = .{ .start = 10, .end = 10 },
             },
         },
     },
@@ -417,11 +417,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 8 },
+                .span = .{ .start = 0, .end = 8 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 8, .end = 8 },
+                .span = .{ .start = 8, .end = 8 },
             },
         },
     },
@@ -430,11 +430,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 20 },
+                .span = .{ .start = 0, .end = 20 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 20, .end = 20 },
+                .span = .{ .start = 20, .end = 20 },
             },
         },
     },
@@ -443,15 +443,15 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 10 },
+                .span = .{ .start = 0, .end = 10 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 11, .end = 20 },
+                .span = .{ .start = 11, .end = 20 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 20, .end = 20 },
+                .span = .{ .start = 20, .end = 20 },
             },
         },
     },
@@ -460,11 +460,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 32 },
+                .span = .{ .start = 0, .end = 32 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 32, .end = 32 },
+                .span = .{ .start = 32, .end = 32 },
             },
         },
     },
@@ -473,19 +473,19 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 3, .end = 4 },
+                .span = .{ .start = 3, .end = 4 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 4, .end = 9 },
+                .span = .{ .start = 4, .end = 9 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 9, .end = 9 },
+                .span = .{ .start = 9, .end = 9 },
             },
         },
     },
@@ -494,19 +494,19 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .left_bracket,
-                .loc = .{ .start = 0, .end = 1 },
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 1, .end = 6 },
+                .span = .{ .start = 1, .end = 6 },
             },
             .{
                 .tag = .right_bracket,
-                .loc = .{ .start = 6, .end = 7 },
+                .span = .{ .start = 6, .end = 7 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 7, .end = 7 },
+                .span = .{ .start = 7, .end = 7 },
             },
         },
     },
@@ -515,19 +515,19 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .double_left_bracket,
-                .loc = .{ .start = 0, .end = 2 },
+                .span = .{ .start = 0, .end = 2 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 2, .end = 10 },
+                .span = .{ .start = 2, .end = 10 },
             },
             .{
                 .tag = .double_right_bracket,
-                .loc = .{ .start = 10, .end = 12 },
+                .span = .{ .start = 10, .end = 12 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 12, .end = 12 },
+                .span = .{ .start = 12, .end = 12 },
             },
         },
     },
@@ -536,27 +536,27 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .left_brace,
-                .loc = .{ .start = 0, .end = 1 },
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 1, .end = 4 },
+                .span = .{ .start = 1, .end = 4 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 4, .end = 5 },
+                .span = .{ .start = 4, .end = 5 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 5, .end = 8 },
+                .span = .{ .start = 5, .end = 8 },
             },
             .{
                 .tag = .right_brace,
-                .loc = .{ .start = 8, .end = 9 },
+                .span = .{ .start = 8, .end = 9 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 9, .end = 9 },
+                .span = .{ .start = 9, .end = 9 },
             },
         },
     },
@@ -565,27 +565,27 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .left_bracket,
-                .loc = .{ .start = 0, .end = 1 },
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 1, .end = 5 },
+                .span = .{ .start = 1, .end = 5 },
             },
             .{
                 .tag = .comma,
-                .loc = .{ .start = 5, .end = 6 },
+                .span = .{ .start = 5, .end = 6 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 6, .end = 11 },
+                .span = .{ .start = 6, .end = 11 },
             },
             .{
                 .tag = .right_bracket,
-                .loc = .{ .start = 11, .end = 12 },
+                .span = .{ .start = 11, .end = 12 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 12, .end = 12 },
+                .span = .{ .start = 12, .end = 12 },
             },
         },
     },
@@ -594,15 +594,15 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 10, .end = 11 },
+                .span = .{ .start = 10, .end = 11 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 11, .end = 11 },
+                .span = .{ .start = 11, .end = 11 },
             },
         },
     },
@@ -611,19 +611,19 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .comment,
-                .loc = .{ .start = 4, .end = 10 },
+                .span = .{ .start = 4, .end = 10 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 10, .end = 11 },
+                .span = .{ .start = 10, .end = 11 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 11, .end = 11 },
+                .span = .{ .start = 11, .end = 11 },
             },
         },
         .comment_tokens = true,
@@ -633,19 +633,19 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 3, .end = 4 },
+                .span = .{ .start = 3, .end = 4 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 4, .end = 9 },
+                .span = .{ .start = 4, .end = 9 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 9, .end = 9 },
+                .span = .{ .start = 9, .end = 9 },
             },
         },
     },
@@ -654,19 +654,19 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .string,
-                .loc = .{ .start = 5, .end = 12 },
+                .span = .{ .start = 5, .end = 12 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 12, .end = 13 },
+                .span = .{ .start = 12, .end = 13 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 13, .end = 13 },
+                .span = .{ .start = 13, .end = 13 },
             },
         },
     },
@@ -675,23 +675,23 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 3, .end = 5 },
+                .span = .{ .start = 3, .end = 5 },
             },
             .{
                 .tag = .string,
-                .loc = .{ .start = 5, .end = 12 },
+                .span = .{ .start = 5, .end = 12 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 12, .end = 13 },
+                .span = .{ .start = 12, .end = 13 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 13, .end = 13 },
+                .span = .{ .start = 13, .end = 13 },
             },
         },
         .whitespace_tokens = true,
@@ -701,23 +701,23 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 8, .end = 9 },
+                .span = .{ .start = 8, .end = 9 },
             },
             .{
                 .tag = .string,
-                .loc = .{ .start = 9, .end = 16 },
+                .span = .{ .start = 9, .end = 16 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 16, .end = 17 },
+                .span = .{ .start = 16, .end = 17 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 17, .end = 17 },
+                .span = .{ .start = 17, .end = 17 },
             },
         },
     },
@@ -726,15 +726,15 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 8, .end = 9 },
+                .span = .{ .start = 8, .end = 9 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 9, .end = 9 },
+                .span = .{ .start = 9, .end = 9 },
             },
         },
     },
@@ -743,19 +743,19 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 3 },
+                .span = .{ .start = 0, .end = 3 },
             },
             .{
                 .tag = .comment,
-                .loc = .{ .start = 3, .end = 8 },
+                .span = .{ .start = 3, .end = 8 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 8, .end = 9 },
+                .span = .{ .start = 8, .end = 9 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 9, .end = 9 },
+                .span = .{ .start = 9, .end = 9 },
             },
         },
         .comment_tokens = true,
@@ -765,11 +765,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 4 },
+                .span = .{ .start = 0, .end = 4 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 4, .end = 4 },
+                .span = .{ .start = 4, .end = 4 },
             },
         },
     },
@@ -778,11 +778,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 4 },
+                .span = .{ .start = 0, .end = 4 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 4, .end = 4 },
+                .span = .{ .start = 4, .end = 4 },
             },
         },
     },
@@ -791,11 +791,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 4 },
+                .span = .{ .start = 0, .end = 4 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 4, .end = 4 },
+                .span = .{ .start = 4, .end = 4 },
             },
         },
     },
@@ -804,11 +804,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 4 },
+                .span = .{ .start = 0, .end = 4 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 4, .end = 4 },
+                .span = .{ .start = 4, .end = 4 },
             },
         },
     },
@@ -817,11 +817,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 12 },
+                .span = .{ .start = 0, .end = 12 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 12, .end = 12 },
+                .span = .{ .start = 12, .end = 12 },
             },
         },
     },
@@ -830,11 +830,11 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .string,
-                .loc = .{ .start = 0, .end = 12 },
+                .span = .{ .start = 0, .end = 12 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 12, .end = 12 },
+                .span = .{ .start = 12, .end = 12 },
             },
         },
     },
@@ -843,7 +843,7 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 0, .end = 0 },
+                .span = .{ .start = 0, .end = 0 },
             },
         },
     },
@@ -936,195 +936,195 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .comment,
-                .loc = .{ .start = 0, .end = 8 },
+                .span = .{ .start = 0, .end = 8 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 8, .end = 9 },
+                .span = .{ .start = 8, .end = 9 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 9, .end = 12 },
+                .span = .{ .start = 9, .end = 12 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 12, .end = 13 },
+                .span = .{ .start = 12, .end = 13 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 13, .end = 14 },
+                .span = .{ .start = 13, .end = 14 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 14, .end = 15 },
+                .span = .{ .start = 14, .end = 15 },
             },
             .{
                 .tag = .string,
-                .loc = .{ .start = 15, .end = 23 },
+                .span = .{ .start = 15, .end = 23 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 23, .end = 24 },
+                .span = .{ .start = 23, .end = 24 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 24, .end = 28 },
+                .span = .{ .start = 24, .end = 28 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 28, .end = 29 },
+                .span = .{ .start = 28, .end = 29 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 29, .end = 30 },
+                .span = .{ .start = 29, .end = 30 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 30, .end = 31 },
+                .span = .{ .start = 30, .end = 31 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 31, .end = 34 },
+                .span = .{ .start = 31, .end = 34 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 34, .end = 35 },
+                .span = .{ .start = 34, .end = 35 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 35, .end = 40 },
+                .span = .{ .start = 35, .end = 40 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 40, .end = 41 },
+                .span = .{ .start = 40, .end = 41 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 41, .end = 42 },
+                .span = .{ .start = 41, .end = 42 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 42, .end = 43 },
+                .span = .{ .start = 42, .end = 43 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 43, .end = 44 },
+                .span = .{ .start = 43, .end = 44 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 44, .end = 45 },
+                .span = .{ .start = 44, .end = 45 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 45, .end = 50 },
+                .span = .{ .start = 45, .end = 50 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 50, .end = 51 },
+                .span = .{ .start = 50, .end = 51 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 51, .end = 52 },
+                .span = .{ .start = 51, .end = 52 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 52, .end = 53 },
+                .span = .{ .start = 52, .end = 53 },
             },
             .{
                 .tag = .left_bracket,
-                .loc = .{ .start = 53, .end = 54 },
+                .span = .{ .start = 53, .end = 54 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 54, .end = 55 },
+                .span = .{ .start = 54, .end = 55 },
             },
             .{
                 .tag = .comma,
-                .loc = .{ .start = 55, .end = 56 },
+                .span = .{ .start = 55, .end = 56 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 56, .end = 57 },
+                .span = .{ .start = 56, .end = 57 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 57, .end = 58 },
+                .span = .{ .start = 57, .end = 58 },
             },
             .{
                 .tag = .comma,
-                .loc = .{ .start = 58, .end = 59 },
+                .span = .{ .start = 58, .end = 59 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 59, .end = 60 },
+                .span = .{ .start = 59, .end = 60 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 60, .end = 61 },
+                .span = .{ .start = 60, .end = 61 },
             },
             .{
                 .tag = .right_bracket,
-                .loc = .{ .start = 61, .end = 62 },
+                .span = .{ .start = 61, .end = 62 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 62, .end = 63 },
+                .span = .{ .start = 62, .end = 63 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 63, .end = 69 },
+                .span = .{ .start = 63, .end = 69 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 69, .end = 70 },
+                .span = .{ .start = 69, .end = 70 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 70, .end = 71 },
+                .span = .{ .start = 70, .end = 71 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 71, .end = 72 },
+                .span = .{ .start = 71, .end = 72 },
             },
             .{
                 .tag = .left_brace,
-                .loc = .{ .start = 72, .end = 73 },
+                .span = .{ .start = 72, .end = 73 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 73, .end = 74 },
+                .span = .{ .start = 73, .end = 74 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 74, .end = 77 },
+                .span = .{ .start = 74, .end = 77 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 77, .end = 78 },
+                .span = .{ .start = 77, .end = 78 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 78, .end = 79 },
+                .span = .{ .start = 78, .end = 79 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 79, .end = 80 },
+                .span = .{ .start = 79, .end = 80 },
             },
             .{
                 .tag = .string,
-                .loc = .{ .start = 80, .end = 85 },
+                .span = .{ .start = 80, .end = 85 },
             },
             .{
                 .tag = .whitespace,
-                .loc = .{ .start = 85, .end = 86 },
+                .span = .{ .start = 85, .end = 86 },
             },
             .{
                 .tag = .right_brace,
-                .loc = .{ .start = 86, .end = 87 },
+                .span = .{ .start = 86, .end = 87 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 87, .end = 87 },
+                .span = .{ .start = 87, .end = 87 },
             },
         },
         .comment_tokens = true,
@@ -1142,127 +1142,127 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .newline,
-                .loc = .{ .start = 8, .end = 9 },
+                .span = .{ .start = 8, .end = 9 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 9, .end = 12 },
+                .span = .{ .start = 9, .end = 12 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 13, .end = 14 },
+                .span = .{ .start = 13, .end = 14 },
             },
             .{
                 .tag = .string,
-                .loc = .{ .start = 15, .end = 23 },
+                .span = .{ .start = 15, .end = 23 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 23, .end = 24 },
+                .span = .{ .start = 23, .end = 24 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 24, .end = 28 },
+                .span = .{ .start = 24, .end = 28 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 29, .end = 30 },
+                .span = .{ .start = 29, .end = 30 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 31, .end = 34 },
+                .span = .{ .start = 31, .end = 34 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 34, .end = 35 },
+                .span = .{ .start = 34, .end = 35 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 35, .end = 40 },
+                .span = .{ .start = 35, .end = 40 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 41, .end = 42 },
+                .span = .{ .start = 41, .end = 42 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 43, .end = 44 },
+                .span = .{ .start = 43, .end = 44 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 44, .end = 45 },
+                .span = .{ .start = 44, .end = 45 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 45, .end = 50 },
+                .span = .{ .start = 45, .end = 50 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 51, .end = 52 },
+                .span = .{ .start = 51, .end = 52 },
             },
             .{
                 .tag = .left_bracket,
-                .loc = .{ .start = 53, .end = 54 },
+                .span = .{ .start = 53, .end = 54 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 54, .end = 55 },
+                .span = .{ .start = 54, .end = 55 },
             },
             .{
                 .tag = .comma,
-                .loc = .{ .start = 55, .end = 56 },
+                .span = .{ .start = 55, .end = 56 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 57, .end = 58 },
+                .span = .{ .start = 57, .end = 58 },
             },
             .{
                 .tag = .comma,
-                .loc = .{ .start = 58, .end = 59 },
+                .span = .{ .start = 58, .end = 59 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 60, .end = 61 },
+                .span = .{ .start = 60, .end = 61 },
             },
             .{
                 .tag = .right_bracket,
-                .loc = .{ .start = 61, .end = 62 },
+                .span = .{ .start = 61, .end = 62 },
             },
             .{
                 .tag = .newline,
-                .loc = .{ .start = 62, .end = 63 },
+                .span = .{ .start = 62, .end = 63 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 63, .end = 69 },
+                .span = .{ .start = 63, .end = 69 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 70, .end = 71 },
+                .span = .{ .start = 70, .end = 71 },
             },
             .{
                 .tag = .left_brace,
-                .loc = .{ .start = 72, .end = 73 },
+                .span = .{ .start = 72, .end = 73 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 74, .end = 77 },
+                .span = .{ .start = 74, .end = 77 },
             },
             .{
                 .tag = .equal,
-                .loc = .{ .start = 78, .end = 79 },
+                .span = .{ .start = 78, .end = 79 },
             },
             .{
                 .tag = .string,
-                .loc = .{ .start = 80, .end = 85 },
+                .span = .{ .start = 80, .end = 85 },
             },
             .{
                 .tag = .right_brace,
-                .loc = .{ .start = 86, .end = 87 },
+                .span = .{ .start = 86, .end = 87 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 87, .end = 87 },
+                .span = .{ .start = 87, .end = 87 },
             },
         },
     },
@@ -1271,23 +1271,23 @@ const next_test_cases: []const NextTestCase = &.{
         .tokens = &.{
             .{
                 .tag = .literal,
-                .loc = .{ .start = 0, .end = 2 },
+                .span = .{ .start = 0, .end = 2 },
             },
             .{
                 .tag = .string,
-                .loc = .{ .start = 2, .end = 5 },
+                .span = .{ .start = 2, .end = 5 },
             },
             .{
                 .tag = .dot,
-                .loc = .{ .start = 5, .end = 6 },
+                .span = .{ .start = 5, .end = 6 },
             },
             .{
                 .tag = .literal,
-                .loc = .{ .start = 6, .end = 7 },
+                .span = .{ .start = 6, .end = 7 },
             },
             .{
                 .tag = .end_of_file,
-                .loc = .{ .start = 7, .end = 7 },
+                .span = .{ .start = 7, .end = 7 },
             },
         },
     },

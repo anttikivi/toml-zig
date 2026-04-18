@@ -2,15 +2,13 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-//! Parses TOML tokens into syntax-aware items and decodes scalars from
-//! the input. It emits `Item`s that contain the information parsed from
-//! the tokens it receives.
+//! Parses TOML tokens into syntax-aware items and decodes scalars from the input. It emits `Item`s
+//! that contain the information parsed from the tokens it receives.
 //!
-//! The Parser validates the syntax of the tokens it receives. However, it does
-//! not keep track of the keys and values so checking for duplicate keys and
-//! other such requirements is left for the receiver. As it does not use
-//! an allocator, it does not parse string values. The receiver must handle
-//! the strings, e.g. normalize the line endings and parse escape sequences.
+//! The Parser validates the syntax of the tokens it receives. However, it does not keep track of
+//! the keys and values so checking for duplicate keys and other such requirements is left for
+//! the receiver. As it does not use an allocator, it does not parse string values. The receiver
+//! must handle the strings, e.g. normalize the line endings and parse escape sequences.
 
 const Parser = @This();
 
@@ -107,8 +105,7 @@ pub const State = enum {
     inline_table,
 };
 
-/// Stack for storing the current nesting status of the parser when inside
-/// arrays and inline tables.
+/// Stack for storing the current nesting status of the parser when inside arrays and inline tables.
 fn Stack(comptime T: type, comptime c: usize) type {
     return struct {
         buf: [c]T = undefined,
@@ -156,10 +153,10 @@ pub fn init(input: []const u8, options: Options) Parser {
     };
 }
 
-/// Returns the next `Item` parsed from the tokens obtained from the input.
-/// The string values are always slices from the original input buffer, and
-/// the receiver of the `Item` must either duplicate the strings or inform
-/// the caller of the decoder on the ownership and borrowing of the strings.
+/// Returns the next `Item` parsed from the tokens obtained from the input. The string values are
+/// always slices from the original input buffer, and the receiver of the `Item` must either
+/// duplicate the strings or inform the caller of the decoder on the ownership and borrowing of
+/// the strings.
 pub fn next(self: *Parser) Error!?Item {
     errdefer self.state = .invalid;
     errdefer self.token = null;
@@ -569,12 +566,12 @@ pub fn next(self: *Parser) Error!?Item {
                         u8,
                         " \t\r\n",
                         self.tokenizer.buffer[start],
-                    )) : (start += 1) {}
+                    ) != null) : (start += 1) {}
                     while (end > start and std.mem.findScalar(
                         u8,
                         " \t\r\n",
-                        self.tokenizer.buffer[end],
-                    )) : (end -= 1) {}
+                        self.tokenizer.buffer[end - 1],
+                    ) != null) : (end -= 1) {}
 
                     if (start == end) {
                         return self.fail(error.UnexpectedToken, null);
@@ -680,8 +677,8 @@ pub fn next(self: *Parser) Error!?Item {
                     if (self.nesting.top()) |t| {
                         switch (t) {
                             .array => {
-                                // When inside array, a newline is allowed if
-                                // the array is terminated after that.
+                                // When inside array, a newline is allowed if the array is
+                                // terminated after that.
                                 self.token = try self.tokenizer.next();
                                 retry: switch (self.token.?.tag) {
                                     .double_right_bracket => {
@@ -946,11 +943,11 @@ fn parseDatetime(self: *Parser, result: *Item, s: []const u8) Error!void {
         return self.fail(error.InvalidDatetime, null);
     };
 
-    const max_day = switch (month) {
+    const max_day: u8 = switch (month) {
         1, 3, 5, 7, 8, 10, 12 => 31,
         4, 6, 9, 11 => 30,
         2 => if ((year % 4 == 0 and year % 100 != 0) or (year % 400 == 0)) 29 else 28,
-        else => self.fail(error.InvalidDatetime, null),
+        else => return self.fail(error.InvalidDatetime, null),
     };
     if (day == 0 or day > max_day) {
         return self.fail(error.InvalidDatetime, null);
@@ -972,8 +969,8 @@ fn parseDatetime(self: *Parser, result: *Item, s: []const u8) Error!void {
                 while (end > start and std.mem.findScalar(
                     u8,
                     " \t\r\n",
-                    self.tokenizer.buffer[end],
-                )) : (end -= 1) {}
+                    self.tokenizer.buffer[end - 1],
+                ) != null) : (end -= 1) {}
 
                 if (start == end) {
                     return self.fail(error.UnexpectedToken, null);
@@ -1000,15 +997,17 @@ fn parseDatetime(self: *Parser, result: *Item, s: []const u8) Error!void {
         return self.fail(error.InvalidDatetime, null);
     }
 
-    var consumed: u8 = 0;
-    const time = self.parseTime(buf, &consumed) catch |err| return switch (err) {
+    var consumed: usize = 0;
+    const time_value = self.parseTime(buf, &consumed) catch |err| return switch (err) {
         error.InvalidTime => error.InvalidDatetime,
         else => err,
     };
+    const time = switch (time_value) {
+        .local_time => |t| t,
+        else => unreachable,
+    };
 
-    if (consumed < buf.len) {
-        buf = buf[consumed..];
-    }
+    buf = buf[consumed..];
 
     const tz = blk: {
         if (buf.len == 0) {
@@ -1065,7 +1064,7 @@ fn parseDatetime(self: *Parser, result: *Item, s: []const u8) Error!void {
     };
 }
 
-fn parseTime(self: *Parser, s: []const u8, consumed: ?*u8) Error!Item.Value {
+fn parseTime(self: *Parser, s: []const u8, consumed: ?*usize) Error!Item.Value {
     var buf = s;
 
     if (buf.len < 5 or buf[2] != ':') {
@@ -1134,7 +1133,7 @@ fn parseTime(self: *Parser, s: []const u8, consumed: ?*u8) Error!Item.Value {
             buf = buf[i..];
 
             if (consumed) |c| {
-                c.* += i;
+                c.* += i + 1;
             }
 
             var significant_digits: usize = @min(i, 9);

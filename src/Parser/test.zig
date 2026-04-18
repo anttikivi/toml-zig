@@ -9,6 +9,7 @@ const Parser = @import("../Parser.zig");
 const Error = Parser.Error;
 const Item = Parser.Item;
 const State = Parser.State;
+const Span = @import("../root.zig").Span;
 const Date = @import("../value.zig").Date;
 const Time = @import("../value.zig").Time;
 const Datetime = @import("../value.zig").Datetime;
@@ -19,6 +20,7 @@ const Version = @import("../toml.zig").Version;
 
 const TestItem = struct {
     tag: Tag,
+    span: Span = undefined,
     value: ?Value = null,
 
     pub const Tag = enum {
@@ -75,7 +77,11 @@ const TestItem = struct {
             @compileError("TestItem may only be used in tests");
         }
 
-        try writer.print("{{ tag: .{t}, value: {?f} }}", .{ self.tag, self.value });
+        try writer.print("{{ tag: .{t}, span: {any}, value: {?f} }}", .{
+            self.tag,
+            self.span,
+            self.value,
+        });
     }
 };
 
@@ -84,6 +90,30 @@ const TestCase = struct {
     items: []const ?TestItem,
     toml_version: Version = default_version,
 };
+
+fn expectedTag(tag: TestItem.Tag) ?Item.Tag {
+    if (tag == .@"error") {
+        return null;
+    }
+
+    return std.meta.stringToEnum(Item.Tag, @tagName(tag)).?;
+}
+
+fn expectedValueTag(value: TestItem.Value) std.meta.Tag(Item.Value) {
+    return std.meta.stringToEnum(std.meta.Tag(Item.Value), @tagName(std.meta.activeTag(value))).?;
+}
+
+fn expectedSyntaxToken(tag: Item.Tag) ?[]const u8 {
+    return switch (tag) {
+        .table_header_start, .array_start => "[",
+        .table_header_end, .array_end => "]",
+        .array_table_header_start => "[[",
+        .array_table_header_end => "]]",
+        .inline_table_start => "{",
+        .inline_table_end => "}",
+        else => null,
+    };
+}
 
 const test_cases: []const TestCase = &.{
     .{
@@ -102,13 +132,16 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .table_header_end,
+                .span = .{ .start = 2, .end = 3 },
             },
             null,
         },
@@ -118,17 +151,21 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 3, .end = 4 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .table_header_end,
+                .span = .{ .start = 4, .end = 5 },
             },
             null,
         },
@@ -138,21 +175,26 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 3, .end = 4 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 5, .end = 6 },
                 .value = .{ .literal = "c" },
             },
             .{
                 .tag = .table_header_end,
+                .span = .{ .start = 6, .end = 7 },
             },
             null,
         },
@@ -162,13 +204,16 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .string = "a" },
             },
             .{
                 .tag = .table_header_end,
+                .span = .{ .start = 4, .end = 5 },
             },
             null,
         },
@@ -178,13 +223,16 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .table_header_end,
+                .span = .{ .start = 4, .end = 5 },
             },
             null,
         },
@@ -194,21 +242,26 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 4, .end = 5 },
                 .value = .{ .string = "b" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 7, .end = 8 },
                 .value = .{ .literal = "c" },
             },
             .{
                 .tag = .table_header_end,
+                .span = .{ .start = 8, .end = 9 },
             },
             null,
         },
@@ -218,21 +271,26 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 4, .end = 5 },
                 .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 7, .end = 8 },
                 .value = .{ .literal = "c" },
             },
             .{
                 .tag = .table_header_end,
+                .span = .{ .start = 8, .end = 9 },
             },
             null,
         },
@@ -242,25 +300,31 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 4, .end = 5 },
                 .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 8, .end = 9 },
                 .value = .{ .string = "c" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 11, .end = 12 },
                 .value = .{ .literal = "d" },
             },
             .{
                 .tag = .table_header_end,
+                .span = .{ .start = 12, .end = 13 },
             },
             null,
         },
@@ -270,21 +334,26 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .string = "a" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 5, .end = 6 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 8, .end = 9 },
                 .value = .{ .literal_string = "c" },
             },
             .{
                 .tag = .table_header_end,
+                .span = .{ .start = 10, .end = 11 },
             },
             null,
         },
@@ -294,6 +363,7 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .@"error",
@@ -306,9 +376,11 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal = "a" },
             },
             .{
@@ -322,6 +394,7 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .@"error",
@@ -334,9 +407,11 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal = "a" },
             },
             .{
@@ -350,9 +425,11 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .string = "a" },
             },
             .{
@@ -366,6 +443,7 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .@"error",
@@ -378,9 +456,11 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .string = "a" },
             },
             .{
@@ -394,9 +474,11 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .string = "a" },
             },
             .{
@@ -410,9 +492,11 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal_string = "a" },
             },
             .{
@@ -426,9 +510,11 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal_string = "a" },
             },
             .{
@@ -442,9 +528,11 @@ const table_header_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .table_header_start,
+                .span = .{ .start = 0, .end = 1 },
             },
             .{
                 .tag = .table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal_string = "a" },
             },
             .{
@@ -459,53 +547,59 @@ const array_table_header_cases: []const TestCase = &.{
     .{
         .buffer = "[[a]]",
         .items = &.{
-            .{ .tag = .array_table_header_start },
+            .{ .tag = .array_table_header_start, .span = .{ .start = 0, .end = 2 } },
             .{
                 .tag = .array_table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal = "a" },
             },
-            .{ .tag = .array_table_header_end },
+            .{ .tag = .array_table_header_end, .span = .{ .start = 3, .end = 5 } },
             null,
         },
     },
     .{
         .buffer = "[[a.b]]",
         .items = &.{
-            .{ .tag = .array_table_header_start },
+            .{ .tag = .array_table_header_start, .span = .{ .start = 0, .end = 2 } },
             .{
                 .tag = .array_table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .array_table_key,
+                .span = .{ .start = 4, .end = 5 },
                 .value = .{ .literal = "b" },
             },
-            .{ .tag = .array_table_header_end },
+            .{ .tag = .array_table_header_end, .span = .{ .start = 5, .end = 7 } },
             null,
         },
     },
     .{
         .buffer = "[[\"a\".'b']]",
         .items = &.{
-            .{ .tag = .array_table_header_start },
+            .{ .tag = .array_table_header_start, .span = .{ .start = 0, .end = 2 } },
             .{
                 .tag = .array_table_key,
+                .span = .{ .start = 3, .end = 4 },
                 .value = .{ .string = "a" },
             },
             .{
                 .tag = .array_table_key,
+                .span = .{ .start = 7, .end = 8 },
                 .value = .{ .literal_string = "b" },
             },
-            .{ .tag = .array_table_header_end },
+            .{ .tag = .array_table_header_end, .span = .{ .start = 9, .end = 11 } },
             null,
         },
     },
     .{
         .buffer = "[[a.]]",
         .items = &.{
-            .{ .tag = .array_table_header_start },
+            .{ .tag = .array_table_header_start, .span = .{ .start = 0, .end = 2 } },
             .{
                 .tag = .array_table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal = "a" },
             },
             .{
@@ -517,9 +611,10 @@ const array_table_header_cases: []const TestCase = &.{
     .{
         .buffer = "[[a",
         .items = &.{
-            .{ .tag = .array_table_header_start },
+            .{ .tag = .array_table_header_start, .span = .{ .start = 0, .end = 2 } },
             .{
                 .tag = .array_table_key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal = "a" },
             },
             .{
@@ -536,10 +631,12 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 1 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 6 },
                 .value = .{ .string = "b" },
             },
             null,
@@ -550,14 +647,17 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 1 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 10 },
                 .value = .{ .string = "cde" },
             },
             null,
@@ -568,18 +668,22 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 1 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 2, .end = 3 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 4, .end = 5 },
                 .value = .{ .literal = "c" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 12 },
                 .value = .{ .string = "def" },
             },
             null,
@@ -590,10 +694,12 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .string = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 10 },
                 .value = .{ .string = "bcd" },
             },
             null,
@@ -604,14 +710,17 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .string = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 4, .end = 5 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 12 },
                 .value = .{ .string = "cde" },
             },
             null,
@@ -622,14 +731,17 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 1 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 3, .end = 4 },
                 .value = .{ .string = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 12 },
                 .value = .{ .string = "cde" },
             },
             null,
@@ -640,14 +752,17 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .string = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 5, .end = 6 },
                 .value = .{ .string = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 11, .end = 14 },
                 .value = .{ .string = "cde" },
             },
             null,
@@ -658,18 +773,22 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .string = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 4, .end = 5 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 7, .end = 8 },
                 .value = .{ .string = "c" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 13, .end = 16 },
                 .value = .{ .string = "def" },
             },
             null,
@@ -680,18 +799,22 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 1 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 3, .end = 4 },
                 .value = .{ .string = "b" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 6, .end = 7 },
                 .value = .{ .literal = "c" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 11, .end = 14 },
                 .value = .{ .string = "def" },
             },
             null,
@@ -702,10 +825,12 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 10 },
                 .value = .{ .string = "bcd" },
             },
             null,
@@ -716,14 +841,17 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 5, .end = 6 },
                 .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 11, .end = 14 },
                 .value = .{ .string = "cde" },
             },
             null,
@@ -734,14 +862,17 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 4, .end = 5 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 12 },
                 .value = .{ .string = "cde" },
             },
             null,
@@ -752,14 +883,17 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 1 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 3, .end = 4 },
                 .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 12 },
                 .value = .{ .string = "cde" },
             },
             null,
@@ -770,18 +904,22 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 4, .end = 5 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 7, .end = 8 },
                 .value = .{ .literal_string = "c" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 13, .end = 16 },
                 .value = .{ .string = "def" },
             },
             null,
@@ -792,18 +930,22 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 1 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 3, .end = 4 },
                 .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 6, .end = 7 },
                 .value = .{ .literal = "c" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 11, .end = 14 },
                 .value = .{ .string = "def" },
             },
             null,
@@ -814,18 +956,22 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal_string = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 5, .end = 6 },
                 .value = .{ .string = "b" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 8, .end = 9 },
                 .value = .{ .literal = "c" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 13, .end = 16 },
                 .value = .{ .string = "def" },
             },
             null,
@@ -845,6 +991,7 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 1 },
                 .value = .{ .literal = "a" },
             },
             .{
@@ -867,6 +1014,7 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 1 },
                 .value = .{ .literal = "a" },
             },
             .{
@@ -880,6 +1028,7 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .string = "a" },
             },
             .{
@@ -902,6 +1051,7 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .string = "a" },
             },
             .{
@@ -915,6 +1065,7 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .string = "a" },
             },
             .{
@@ -928,6 +1079,7 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal_string = "a" },
             },
             .{
@@ -950,6 +1102,7 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal_string = "a" },
             },
             .{
@@ -963,6 +1116,7 @@ const key_value_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 2 },
                 .value = .{ .literal_string = "a" },
             },
             .{
@@ -979,10 +1133,12 @@ const bool_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "bool" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 11 },
                 .value = .{ .boolean = true },
             },
             null,
@@ -993,10 +1149,12 @@ const bool_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "bool" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 12 },
                 .value = .{ .boolean = false },
             },
             null,
@@ -1007,10 +1165,12 @@ const bool_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "bool" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 9 },
                 .value = .{ .boolean = true },
             },
             null,
@@ -1021,10 +1181,12 @@ const bool_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "bool" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 11 },
                 .value = .{ .boolean = true },
             },
             null,
@@ -1035,10 +1197,12 @@ const bool_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "bool" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .boolean = true },
             },
             null,
@@ -1049,10 +1213,12 @@ const bool_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "bool" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .boolean = true },
             },
             null,
@@ -1067,10 +1233,12 @@ const bool_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 5 },
                 .value = .{ .literal = "bool" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .boolean = true },
             },
             null,
@@ -1084,10 +1252,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 25 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -1108,10 +1278,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 25 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -1132,10 +1304,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 24 },
                 .value = .{
                     .local_datetime = .{
                         .year = 1979,
@@ -1155,6 +1329,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1168,6 +1343,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1181,10 +1357,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 27 },
                 .value = .{
                     .local_datetime = .{
                         .year = 1979,
@@ -1205,10 +1383,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 33 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -1230,10 +1410,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 30 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -1254,10 +1436,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 33 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -1279,10 +1463,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 30 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -1303,10 +1489,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "date" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 17 },
                 .value = .{
                     .local_date = .{
                         .year = 1979,
@@ -1323,6 +1511,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "date" },
             },
             .{
@@ -1336,6 +1525,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "date" },
             },
             .{
@@ -1349,6 +1539,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "date" },
             },
             .{
@@ -1362,10 +1553,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 22 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -1386,6 +1579,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1400,10 +1594,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 21 },
                 .value = .{
                     .local_datetime = .{
                         .year = 1979,
@@ -1423,6 +1619,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1437,10 +1634,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 27 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -1461,6 +1660,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1475,6 +1675,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1488,6 +1689,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1501,10 +1703,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 5, .end = 25 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -1525,6 +1729,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1538,6 +1743,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1551,6 +1757,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 2 },
                 .value = .{ .literal = "dt" },
             },
             .{
@@ -1564,6 +1771,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
@@ -1577,6 +1785,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
@@ -1590,6 +1799,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
@@ -1603,10 +1813,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 15 },
                 .value = .{
                     .local_time = .{
                         .hour = 7,
@@ -1623,6 +1835,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
@@ -1636,6 +1849,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
@@ -1649,10 +1863,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 15 },
                 .value = .{
                     .local_time = .{
                         .hour = 7,
@@ -1669,6 +1885,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
@@ -1682,10 +1899,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 15 },
                 .value = .{
                     .local_time = .{
                         .hour = 7,
@@ -1702,10 +1921,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 20 },
                 .value = .{
                     .local_time = .{
                         .hour = 7,
@@ -1723,6 +1944,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
@@ -1736,10 +1958,12 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 7, .end = 12 },
                 .value = .{
                     .local_time = .{
                         .hour = 7,
@@ -1756,6 +1980,7 @@ const datetime_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 4 },
                 .value = .{ .literal = "time" },
             },
             .{
@@ -1773,10 +1998,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 7 },
                 .value = .{ .int = 0 },
             },
             null,
@@ -1787,10 +2014,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 9 },
                 .value = .{ .int = 123 },
             },
             null,
@@ -1801,10 +2030,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 13 },
                 .value = .{ .int = 123456 },
             },
             null,
@@ -1815,10 +2046,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 10 },
                 .value = .{ .int = 123 },
             },
             null,
@@ -1829,10 +2062,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 10 },
                 .value = .{ .int = -456 },
             },
             null,
@@ -1843,10 +2078,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 8 },
                 .value = .{ .int = 0 },
             },
             null,
@@ -1857,10 +2094,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 16 },
                 .value = .{ .int = 214 },
             },
             null,
@@ -1871,6 +2110,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -1884,10 +2124,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 16 },
                 .value = .{ .int = 342391 },
             },
             null,
@@ -1898,6 +2140,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -1911,10 +2154,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 17 },
                 .value = .{ .int = 3735928559 },
             },
             null,
@@ -1925,6 +2170,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -1938,10 +2184,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 25 },
                 .value = .{ .int = std.math.maxInt(Int) },
             },
             null,
@@ -1952,10 +2200,12 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 6, .end = 26 },
                 .value = .{ .int = std.math.minInt(Int) },
             },
             null,
@@ -1966,6 +2216,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -1979,6 +2230,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -1992,6 +2244,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2005,6 +2258,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2018,6 +2272,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2031,6 +2286,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2044,6 +2300,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2057,6 +2314,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2070,6 +2328,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2083,6 +2342,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2096,6 +2356,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2109,6 +2370,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2122,6 +2384,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2135,6 +2398,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2148,6 +2412,7 @@ const int_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 3 },
                 .value = .{ .literal = "int" },
             },
             .{
@@ -2164,10 +2429,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 11 },
                 .value = .{ .float = 0 },
             },
             null,
@@ -2178,10 +2445,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 11 },
                 .value = .{ .float = 1 },
             },
             null,
@@ -2192,10 +2461,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .float = 1 },
             },
             null,
@@ -2206,10 +2477,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 11 },
                 .value = .{ .float = 1.1 },
             },
             null,
@@ -2220,10 +2493,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 17 },
                 .value = .{ .float = 2.3456789 },
             },
             null,
@@ -2234,10 +2509,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 24 },
                 .value = .{ .float = 0.29375927359253 },
             },
             null,
@@ -2248,10 +2525,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 15 },
                 .value = .{ .float = 12.34 },
             },
             null,
@@ -2262,10 +2541,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 11 },
                 .value = .{ .float = 100 },
             },
             null,
@@ -2276,10 +2557,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .float = 100 },
             },
             null,
@@ -2290,10 +2573,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 11 },
                 .value = .{ .float = 100 },
             },
             null,
@@ -2304,10 +2589,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 15 },
                 .value = .{ .float = 1000.5 },
             },
             null,
@@ -2318,10 +2605,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 13 },
                 .value = .{ .float = 10000000000 },
             },
             null,
@@ -2332,10 +2621,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .float = -0.0 },
             },
             null,
@@ -2346,10 +2637,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .float = -1 },
             },
             null,
@@ -2360,10 +2653,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .float = -1.1 },
             },
             null,
@@ -2374,10 +2669,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 18 },
                 .value = .{ .float = -2.3456789 },
             },
             null,
@@ -2388,10 +2685,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 25 },
                 .value = .{ .float = -0.29375927359253 },
             },
             null,
@@ -2402,10 +2701,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 16 },
                 .value = .{ .float = -12.34 },
             },
             null,
@@ -2416,10 +2717,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 11 },
                 .value = .{ .float = std.math.inf(Float) },
             },
             null,
@@ -2430,10 +2733,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .float = std.math.inf(Float) },
             },
             null,
@@ -2444,10 +2749,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .float = -std.math.inf(Float) },
             },
             null,
@@ -2458,10 +2765,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 11 },
                 .value = .{ .float = std.math.nan(Float) },
             },
             null,
@@ -2472,10 +2781,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .float = std.math.nan(Float) },
             },
             null,
@@ -2486,10 +2797,12 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 8, .end = 12 },
                 .value = .{ .float = -std.math.nan(Float) },
             },
             null,
@@ -2500,6 +2813,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2513,6 +2827,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2526,6 +2841,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2539,6 +2855,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2552,6 +2869,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2565,6 +2883,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2578,6 +2897,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2591,6 +2911,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2604,6 +2925,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2617,6 +2939,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2630,6 +2953,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2643,6 +2967,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2656,6 +2981,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2669,6 +2995,7 @@ const float_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "float" },
             },
             .{
@@ -2685,22 +3012,26 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 10, .end = 15 },
                 .value = .{ .string = "hello" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 18, .end = 20 },
                 .value = .{ .int = 13 },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 22, .end = 26 },
                 .value = .{ .boolean = true },
             },
-            .{ .tag = .array_end },
+            .{ .tag = .array_end, .span = .{ .start = 26, .end = 27 } },
             null,
         },
     },
@@ -2709,10 +3040,11 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_end },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
+            .{ .tag = .array_end, .span = .{ .start = 9, .end = 10 } },
             null,
         },
     },
@@ -2721,14 +3053,16 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 10 },
                 .value = .{ .int = 1 },
             },
-            .{ .tag = .array_end },
+            .{ .tag = .array_end, .span = .{ .start = 11, .end = 12 } },
             null,
         },
     },
@@ -2737,26 +3071,30 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .int = 1 },
             },
-            .{ .tag = .array_end },
-            .{ .tag = .array_start },
+            .{ .tag = .array_end, .span = .{ .start = 11, .end = 12 } },
+            .{ .tag = .array_start, .span = .{ .start = 14, .end = 15 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 15, .end = 16 },
                 .value = .{ .int = 2 },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 18, .end = 19 },
                 .value = .{ .int = 3 },
             },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
+            .{ .tag = .array_end, .span = .{ .start = 19, .end = 20 } },
+            .{ .tag = .array_end, .span = .{ .start = 20, .end = 21 } },
             null,
         },
     },
@@ -2765,12 +3103,13 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
+            .{ .tag = .array_end, .span = .{ .start = 10, .end = 11 } },
+            .{ .tag = .array_end, .span = .{ .start = 11, .end = 12 } },
             null,
         },
     },
@@ -2784,12 +3123,13 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 6 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
+            .{ .tag = .array_start, .span = .{ .start = 13, .end = 14 } },
+            .{ .tag = .array_end, .span = .{ .start = 14, .end = 15 } },
+            .{ .tag = .array_end, .span = .{ .start = 16, .end = 17 } },
             null,
         },
     },
@@ -2803,12 +3143,13 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 6 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
+            .{ .tag = .array_start, .span = .{ .start = 13, .end = 14 } },
+            .{ .tag = .array_end, .span = .{ .start = 15, .end = 16 } },
+            .{ .tag = .array_end, .span = .{ .start = 16, .end = 17 } },
             null,
         },
     },
@@ -2823,16 +3164,18 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 6 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
+            .{ .tag = .array_start, .span = .{ .start = 13, .end = 14 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 14, .end = 15 },
                 .value = .{ .int = 1 },
             },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
+            .{ .tag = .array_end, .span = .{ .start = 18, .end = 19 } },
+            .{ .tag = .array_end, .span = .{ .start = 20, .end = 21 } },
             null,
         },
     },
@@ -2848,22 +3191,25 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 6 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
+            .{ .tag = .array_start, .span = .{ .start = 13, .end = 14 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 14, .end = 15 },
                 .value = .{ .int = 1 },
             },
-            .{ .tag = .array_end },
-            .{ .tag = .array_start },
+            .{ .tag = .array_end, .span = .{ .start = 15, .end = 16 } },
+            .{ .tag = .array_start, .span = .{ .start = 20, .end = 21 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 21, .end = 22 },
                 .value = .{ .int = 2 },
             },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
+            .{ .tag = .array_end, .span = .{ .start = 25, .end = 26 } },
+            .{ .tag = .array_end, .span = .{ .start = 27, .end = 28 } },
             null,
         },
     },
@@ -2872,12 +3218,13 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
+            .{ .tag = .array_end, .span = .{ .start = 10, .end = 11 } },
+            .{ .tag = .array_end, .span = .{ .start = 12, .end = 13 } },
             null,
         },
     },
@@ -2892,22 +3239,26 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 6 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 11, .end = 16 },
                 .value = .{ .string = "hello" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 21, .end = 23 },
                 .value = .{ .int = 13 },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 27, .end = 31 },
                 .value = .{ .boolean = true },
             },
-            .{ .tag = .array_end },
+            .{ .tag = .array_end, .span = .{ .start = 33, .end = 34 } },
             null,
         },
     },
@@ -2916,11 +3267,13 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 19 },
                 .value = .{
                     .local_date = .{
                         .year = 1979,
@@ -2931,6 +3284,7 @@ const array_cases: []const TestCase = &.{
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 21, .end = 29 },
                 .value = .{
                     .local_time = .{
                         .hour = 7,
@@ -2941,6 +3295,7 @@ const array_cases: []const TestCase = &.{
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 31, .end = 51 },
                 .value = .{
                     .datetime = .{
                         .year = 1979,
@@ -2953,7 +3308,7 @@ const array_cases: []const TestCase = &.{
                     },
                 },
             },
-            .{ .tag = .array_end },
+            .{ .tag = .array_end, .span = .{ .start = 51, .end = 52 } },
             null,
         },
     },
@@ -2962,11 +3317,13 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 10 },
                 .value = .{ .int = 1 },
             },
             .{
@@ -2980,11 +3337,13 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 10 },
                 .value = .{ .int = 1 },
             },
             .{
@@ -2998,11 +3357,13 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 10 },
                 .value = .{ .int = 1 },
             },
             .{
@@ -3020,11 +3381,13 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 6 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .int = 1 },
             },
             .{
@@ -3042,10 +3405,11 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 6 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_end },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
+            .{ .tag = .array_end, .span = .{ .start = 11, .end = 12 } },
             null,
         },
     },
@@ -3054,20 +3418,22 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 9, .end = 10 },
                 .value = .{
                     .int = 1,
                 },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
+            .{ .tag = .array_start, .span = .{ .start = 12, .end = 13 } },
+            .{ .tag = .array_start, .span = .{ .start = 13, .end = 14 } },
+            .{ .tag = .array_end, .span = .{ .start = 14, .end = 15 } },
+            .{ .tag = .array_end, .span = .{ .start = 15, .end = 16 } },
+            .{ .tag = .array_end, .span = .{ .start = 16, .end = 17 } },
             null,
         },
     },
@@ -3076,22 +3442,24 @@ const array_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "array" },
             },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 8, .end = 9 } },
+            .{ .tag = .array_start, .span = .{ .start = 9, .end = 10 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{
                     .int = 1,
                 },
             },
-            .{ .tag = .array_end },
-            .{ .tag = .array_start },
-            .{ .tag = .array_start },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
-            .{ .tag = .array_end },
+            .{ .tag = .array_end, .span = .{ .start = 11, .end = 12 } },
+            .{ .tag = .array_start, .span = .{ .start = 14, .end = 15 } },
+            .{ .tag = .array_start, .span = .{ .start = 15, .end = 16 } },
+            .{ .tag = .array_end, .span = .{ .start = 16, .end = 17 } },
+            .{ .tag = .array_end, .span = .{ .start = 17, .end = 18 } },
+            .{ .tag = .array_end, .span = .{ .start = 18, .end = 19 } },
             null,
         },
     },
@@ -3103,10 +3471,11 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
-            .{ .tag = .inline_table_end },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
+            .{ .tag = .inline_table_end, .span = .{ .start = 9, .end = 10 } },
             null,
         },
     },
@@ -3115,18 +3484,21 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 14, .end = 15 },
                 .value = .{ .int = 1 },
             },
-            .{ .tag = .inline_table_end },
+            .{ .tag = .inline_table_end, .span = .{ .start = 16, .end = 17 } },
             null,
         },
     },
@@ -3135,34 +3507,41 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 14, .end = 15 },
                 .value = .{ .int = 1 },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 17, .end = 18 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 21, .end = 25 },
                 .value = .{ .boolean = true },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 27, .end = 28 },
                 .value = .{ .literal = "c" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 32, .end = 37 },
                 .value = .{ .string = "hello" },
             },
-            .{ .tag = .inline_table_end },
+            .{ .tag = .inline_table_end, .span = .{ .start = 39, .end = 40 } },
             null,
         },
     },
@@ -3171,26 +3550,31 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 11, .end = 12 },
                 .value = .{ .string = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 16, .end = 17 },
                 .value = .{ .int = 1 },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 20, .end = 21 },
                 .value = .{ .literal_string = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 25, .end = 26 },
                 .value = .{ .int = 2 },
             },
-            .{ .tag = .inline_table_end },
+            .{ .tag = .inline_table_end, .span = .{ .start = 27, .end = 28 } },
             null,
         },
     },
@@ -3199,34 +3583,41 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 12, .end = 13 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 16, .end = 17 },
                 .value = .{ .int = 1 },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 19, .end = 20 },
                 .value = .{ .literal = "c" },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 22, .end = 23 },
                 .value = .{ .string = "d" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 27, .end = 28 },
                 .value = .{ .int = 2 },
             },
-            .{ .tag = .inline_table_end },
+            .{ .tag = .inline_table_end, .span = .{ .start = 29, .end = 30 } },
             null,
         },
     },
@@ -3235,46 +3626,55 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 15 },
                 .value = .{ .literal = "point" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 18, .end = 19 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 20, .end = 21 },
                 .value = .{ .literal = "x" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 24, .end = 25 },
                 .value = .{ .int = 1 },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 27, .end = 28 },
                 .value = .{ .literal = "y" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 31, .end = 32 },
                 .value = .{ .int = 2 },
             },
-            .{ .tag = .inline_table_end },
+            .{ .tag = .inline_table_end, .span = .{ .start = 33, .end = 34 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 36, .end = 42 },
                 .value = .{ .literal = "values" },
             },
-            .{ .tag = .array_start },
+            .{ .tag = .array_start, .span = .{ .start = 45, .end = 46 } },
             .{
                 .tag = .value,
+                .span = .{ .start = 46, .end = 47 },
                 .value = .{ .int = 3 },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 49, .end = 50 },
                 .value = .{ .int = 4 },
             },
-            .{ .tag = .array_end },
-            .{ .tag = .inline_table_end },
+            .{ .tag = .array_end, .span = .{ .start = 50, .end = 51 } },
+            .{ .tag = .inline_table_end, .span = .{ .start = 52, .end = 53 } },
             null,
         },
     },
@@ -3289,26 +3689,31 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 6 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 9, .end = 10 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 13, .end = 14 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 17, .end = 18 },
                 .value = .{ .int = 1 },
             },
             .{
                 .tag = .key,
+                .span = .{ .start = 22, .end = 23 },
                 .value = .{ .literal = "b" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 26, .end = 27 },
                 .value = .{ .int = 2 },
             },
-            .{ .tag = .inline_table_end },
+            .{ .tag = .inline_table_end, .span = .{ .start = 29, .end = 30 } },
             null,
         },
     },
@@ -3323,9 +3728,10 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 1, .end = 6 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 9, .end = 10 } },
             .{
                 .tag = .@"error",
                 .value = .{ .@"error" = error.UnexpectedToken },
@@ -3338,18 +3744,21 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 14, .end = 15 },
                 .value = .{ .int = 1 },
             },
-            .{ .tag = .inline_table_end },
+            .{ .tag = .inline_table_end, .span = .{ .start = 17, .end = 18 } },
             null,
         },
     },
@@ -3358,15 +3767,18 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 14, .end = 15 },
                 .value = .{ .int = 1 },
             },
             .{
@@ -3381,15 +3793,18 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 14, .end = 15 },
                 .value = .{ .int = 1 },
             },
             .{
@@ -3403,15 +3818,18 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 14, .end = 15 },
                 .value = .{ .int = 1 },
             },
             .{
@@ -3425,11 +3843,13 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
             .{
@@ -3443,16 +3863,19 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 14, .end = 15 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 16, .end = 17 },
                 .value = .{ .literal = "b" },
             },
             .{
@@ -3466,15 +3889,18 @@ const inline_table_cases: []const TestCase = &.{
         .items = &.{
             .{
                 .tag = .key,
+                .span = .{ .start = 0, .end = 5 },
                 .value = .{ .literal = "table" },
             },
-            .{ .tag = .inline_table_start },
+            .{ .tag = .inline_table_start, .span = .{ .start = 8, .end = 9 } },
             .{
                 .tag = .key,
+                .span = .{ .start = 10, .end = 11 },
                 .value = .{ .literal = "a" },
             },
             .{
                 .tag = .value,
+                .span = .{ .start = 14, .end = 15 },
                 .value = .{ .int = 1 },
             },
             .{
@@ -3485,85 +3911,74 @@ const inline_table_cases: []const TestCase = &.{
     },
 };
 
-fn convertItem(src: ?Item, buffer: []const u8) ?TestItem {
-    if (!builtin.is_test) {
-        @compileError("convertItem may only be used in tests");
-    }
-
-    if (src == null) {
-        return null;
-    }
-
-    return .{
-        .tag = blk: switch (src.?.tag) {
-            inline else => |tag| {
-                const field_name = @tagName(tag);
-                if (!@hasField(Item.Tag, field_name)) {
-                    @compileError("invalid Item.Tag field name: " ++ field_name);
-                }
-
-                break :blk std.meta.stringToEnum(TestItem.Tag, field_name).?;
-            },
-        },
-        .value = blk: {
-            if (src.?.value == null) {
-                break :blk null;
-            }
-
-            switch (src.?.value.?) {
-                // String-kind variants carry no payload in the Parser; the
-                // content lives in `Item.span`. Slice the source to produce
-                // the string that the tests expect.
-                inline .literal,
-                .string,
-                .multiline_string,
-                .literal_string,
-                .multiline_literal_string,
-                => |_, tag| {
-                    const field_name = @tagName(tag);
-                    if (!@hasField(Item.Value, field_name)) {
-                        @compileError("invalid Item.Value field name: " ++ field_name);
-                    }
-
-                    const slice = buffer[src.?.span.start..src.?.span.end];
-                    break :blk @unionInit(TestItem.Value, field_name, slice);
-                },
-                inline else => |payload, tag| {
-                    const field_name = @tagName(tag);
-                    if (!@hasField(Item.Value, field_name)) {
-                        @compileError("invalid Item.Value field name: " ++ field_name);
-                    }
-
-                    break :blk @unionInit(TestItem.Value, field_name, payload);
-                },
-            }
-        },
-    };
-}
-
-fn expectEqualTestItem(expected: ?TestItem, actual: ?TestItem) !void {
+fn expectEqualTestItem(expected: ?TestItem, actual: ?Item, buffer: []const u8) !void {
     if (expected == null or actual == null) {
-        try std.testing.expectEqualDeep(expected, actual);
+        try std.testing.expectEqual(expected == null, actual == null);
         return;
     }
 
-    try std.testing.expectEqual(expected.?.tag, actual.?.tag);
+    const expected_tag = expectedTag(expected.?.tag).?;
+
+    try std.testing.expectEqual(expected_tag, actual.?.tag);
+    try std.testing.expectEqualDeep(expected.?.span, actual.?.span);
+
+    if (expectedSyntaxToken(expected_tag)) |expected_slice| {
+        try std.testing.expectEqualStrings(
+            expected_slice,
+            buffer[actual.?.span.start..actual.?.span.end],
+        );
+    }
 
     if (expected.?.value == null or actual.?.value == null) {
-        try std.testing.expectEqualDeep(expected.?.value, actual.?.value);
+        try std.testing.expectEqual(expected.?.value == null, actual.?.value == null);
         return;
     }
 
-    try std.testing.expectEqual(std.meta.activeTag(expected.?.value.?), std.meta.activeTag(actual.?.value.?));
+    const expected_value = expected.?.value.?;
+    const actual_value = actual.?.value.?;
 
-    switch (expected.?.value.?) {
+    try std.testing.expectEqual(expectedValueTag(expected_value), std.meta.activeTag(actual_value));
+
+    switch (expected_value) {
+        .literal,
+        .string,
+        .multiline_string,
+        .literal_string,
+        .multiline_literal_string,
+        => |expected_text| {
+            try std.testing.expectEqualStrings(
+                expected_text,
+                buffer[actual.?.span.start..actual.?.span.end],
+            );
+        },
         .float => |expected_float| {
-            const actual_float = actual.?.value.?.float;
+            const actual_float = actual_value.float;
             const expected_bits: u64 = @bitCast(expected_float);
             const actual_bits: u64 = @bitCast(actual_float);
             try std.testing.expectEqual(expected_bits, actual_bits);
         },
-        else => try std.testing.expectEqualDeep(expected.?.value, actual.?.value),
+        .int => |expected_int| try std.testing.expectEqual(expected_int, actual_value.int),
+        .boolean => |expected_boolean| try std.testing.expectEqual(
+            expected_boolean,
+            actual_value.boolean,
+        ),
+        .datetime => |expected_datetime| try std.testing.expectEqualDeep(
+            expected_datetime,
+            actual_value.datetime,
+        ),
+        .local_datetime => |expected_local_datetime| try std.testing.expectEqualDeep(
+            expected_local_datetime,
+            actual_value.local_datetime,
+        ),
+        .local_date => |expected_local_date| try std.testing.expectEqualDeep(
+            expected_local_date,
+            actual_value.local_date,
+        ),
+        .local_time => |expected_local_time| try std.testing.expectEqualDeep(
+            expected_local_time,
+            actual_value.local_time,
+        ),
+        .@"error" => unreachable,
     }
 }
 
@@ -3592,13 +4007,17 @@ fn runTests(cases: []const TestCase) !void {
                         try std.testing.expectEqual(null, parser.token);
                     },
                     else => {
-                        const actual = convertItem(try parser.next(), case.buffer);
+                        const actual = try parser.next();
                         var buf: [512]u8 = undefined;
                         items.appendSlice(
                             std.testing.allocator,
-                            std.fmt.bufPrint(&buf, "\n - {f},", .{actual.?}) catch @panic("overflow"),
+                            std.fmt.bufPrint(
+                                &buf,
+                                "\n - {any},",
+                                .{actual.?},
+                            ) catch @panic("overflow"),
                         ) catch @panic("OOM");
-                        try expectEqualTestItem(expected, actual);
+                        try expectEqualTestItem(expected, actual, case.buffer);
                     },
                 }
             }

@@ -62,12 +62,12 @@ pub fn decode(gpa: Allocator, input: []const u8, options: Options) Error!void {
         return decoder.fail(error.InputTooLarge, "input exceed 4GiB");
     }
 
-    var parser: Parser = .init(input, .{
-        .toml_version = options.toml_version,
-        .diagnostics = options.diagnostics,
-    });
+    // var parser: Parser = .init(input, .{
+    //     .toml_version = options.toml_version,
+    //     .diagnostics = options.diagnostics,
+    // });
 
-    while (try parser.next()) |_| {}
+    // while (try parser.next()) |_| {}
 }
 
 fn deinit(self: *Decoder, gpa: Allocator) void {
@@ -80,20 +80,23 @@ fn deinit(self: *Decoder, gpa: Allocator) void {
     self.header_path.deinit(gpa);
 }
 
+// TODO:
 fn fail(self: Decoder, err: Error, msg: ?[]const u8) Error {
     assert(err != error.Reported);
+    _ = self;
+    _ = msg;
 
-    if (self.diagnostics) |diag| {
-        diag.* = .{
-            .position = self.tokenizer.position(),
-            .message = if (msg) |m| m else switch (err) {
-                error.InputTooLarge => "input too large",
-                error.Reported => unreachable,
-            },
-        };
-
-        return error.Reported;
-    }
+    // if (self.diagnostics) |diag| {
+    //     diag.* = .{
+    //         .position = self.parser.tokenizer.position(),
+    //         .message = if (msg) |m| m else switch (err) {
+    //             error.InputTooLarge => "input too large",
+    //             error.Reported => unreachable,
+    //         },
+    //     };
+    //
+    //     return error.Reported;
+    // }
 
     return err;
 }

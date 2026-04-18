@@ -2,17 +2,16 @@
 //
 // SPDX-License-Identifier: Apache-2.0
 
-//! The lowest-level parsing API for TOML documents in this library. Emits
-//! tokens from the input buffer without allocations.
+//! The lowest-level parsing API for TOML documents in this library. Emits tokens from the input
+//! buffer without allocations.
 //!
-//! The Tokenizer does not do proper validation of the TOML input it parses.
-//! However, it validates that the input buffer is a well-formed code-unit
-//! sequence as per Unicode specification. If it encounters an invalid Unicode
-//! sequence, it returns an error.
+//! The Tokenizer does not do proper validation of the TOML input it parses. However, it validates
+//! that the input buffer is a well-formed code-unit sequence as per Unicode specification. If it
+//! encounters an invalid Unicode sequence, it returns an error.
 //!
-//! Additionally, the Tokenizer returns tokens unaware of the current TOML
-//! context. It must be paired with a receiving parser. The parser must ensure
-//! that it parses the produced tokens according to the current context.
+//! Additionally, the Tokenizer returns tokens unaware of the current TOML context. It must be
+//! paired with a receiving parser. The parser must ensure that it parses the produced tokens
+//! according to the current context.
 
 const Tokenizer = @This();
 
