@@ -28,7 +28,7 @@ const Features = @import("toml.zig").Features;
 const Version = @import("toml.zig").Version;
 
 buffer: []const u8,
-index: usize,
+index: u32,
 features: Features,
 whitespace_tokens: bool,
 comment_tokens: bool,
