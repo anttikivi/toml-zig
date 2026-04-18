@@ -261,7 +261,7 @@ pub fn build(b: *std.Build) void {
         ) orelse 16,
     };
 
-    b.modules.put("toml", addTomlMod(b, options)) catch @panic("OOM");
+    b.modules.put(b.allocator, "toml", addTomlMod(b, options)) catch @panic("OOM");
 
     addGenerateBenchDataStep(b, options);
     addBenchmarkStep(b, options);
