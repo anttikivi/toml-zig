@@ -5,6 +5,7 @@
 const std = @import("std");
 const ArrayList = std.ArrayList;
 
+const Parsed = @import("Decoder.zig").Parsed;
 const Span = @import("root.zig").Span;
 const Float = @import("toml.zig").Float;
 const Int = @import("toml.zig").Int;
@@ -25,8 +26,8 @@ pub const Value = union(enum) {
     local_datetime: Datetime,
     local_date: Date,
     local_time: Time,
-    array: usize,
-    table: usize,
+    array: ArrayIndex,
+    table: TableIndex,
 };
 
 pub const Array = ArrayList(Value);
@@ -35,9 +36,22 @@ pub const Table = struct {
     entries: Span,
 
     pub const Entry = struct {
-        key: []const u8,
+        key: String,
         value: Value,
     };
+};
+
+/// Span representing a string. Differentiates between borrowed and owned strings.
+pub const String = union(enum) {
+    borrowed: Span,
+    owned: Span,
+
+    pub fn slice(self: @This(), doc: Parsed) []const u8 {
+        return switch (self) {
+            .borrowed => |s| doc.input[s.start..s.end],
+            .owned => |s| doc.strings.items[s.start..s.end],
+        };
+    }
 };
 
 pub const Datetime = struct {

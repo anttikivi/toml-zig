@@ -38,6 +38,10 @@ pub const Span = struct {
     start: u32,
     end: u32,
 
+    pub fn len(self: @This()) u32 {
+        return self.end - self.start;
+    }
+
     pub fn narrow(self: @This(), n: u32) @This() {
         return .{ .start = self.start + n, .end = self.end - n };
     }
