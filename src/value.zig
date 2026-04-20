@@ -15,8 +15,6 @@ pub const TableIndex = enum(u32) {
     _,
 };
 
-pub const ArrayIndex = enum(u32) { _ };
-
 pub const Value = union(enum) {
     string: []const u8,
     int: Int,
@@ -26,11 +24,9 @@ pub const Value = union(enum) {
     local_datetime: Datetime,
     local_date: Date,
     local_time: Time,
-    array: ArrayIndex,
+    array: u32,
     table: TableIndex,
 };
-
-pub const Array = ArrayList(Value);
 
 pub const Table = struct {
     entries: Span,

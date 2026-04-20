@@ -29,17 +29,25 @@ features: Features,
 diagnostics: ?*Diagnostics,
 
 current_table: TableIndex = .root,
-current_header: ArrayList(HeaderPart) = .empty,
+current_header: ArrayList(String) = .empty,
 
-/// Build-time information on the TOML tables. Its indices must run in parallel to the table
+/// Build-time information on how to TOML tables are defined in the input document. The indices must
+/// run in parallel to the table indices.
+table_defs: ArrayList(TableDef) = .empty,
+
+/// Build-time buffers to the table entries. Entries are buffered before appending to the final list
+/// to keep the entries for each table in order. The indices must run in parallel to the table
 /// indices.
-table_states: std.MultiArrayList(TableState) = .empty,
+entry_bufs: ArrayList(ArrayList(Table.Entry)) = .empty,
+total_entries: u32 = 0,
 
 pub const Error = Allocator.Error || Diagnostics.Error || std.fmt.ParseIntError || error{
     Utf8CannotEncodeSurrogateHalf,
     CodepointTooLarge,
 } || error{
     InputTooLarge,
+    InvalidTable,
+    NotArray,
     NotTable,
 };
 
@@ -56,7 +64,7 @@ pub const Parsed = struct {
     input: []const u8,
 
     tables: ArrayList(Table) = .empty,
-    arrays: ArrayList(Array) = .empty,
+    arrays: ArrayList(Span) = .empty,
     entries: ArrayList(Table.Entry) = .empty,
     values: ArrayList(Value) = .empty,
     strings: ArrayList(u8) = .empty,
@@ -70,28 +78,11 @@ pub const Parsed = struct {
     }
 };
 
-const HeaderPart = struct {
-    key: String,
-    array: bool = false,
-};
-
-const TableState = struct {
-    /// Collection of entries of this table. They will be inserted to the result type list at
-    /// the end to preserve order.
-    entries: ArrayList(Table.Entry) = .empty,
-    def: Definition,
-
-    const Self = @This();
-
-    const Definition = enum {
-        root,
-        header,
-        implicit,
-    };
-
-    fn append(self: *Self, gpa: Allocator, key: String, value: Value) Allocator.Error!void {
-        try self.entries.append(gpa, .{ .key = key, .value = value });
-    }
+const TableDef = enum {
+    root,
+    header,
+    array_element,
+    implicit,
 };
 
 pub fn decode(gpa: Allocator, input: []const u8, options: Options) Error!Parsed {
@@ -124,18 +115,22 @@ pub fn decode(gpa: Allocator, input: []const u8, options: Options) Error!Parsed 
 
     while (try parser.next()) |item| {
         switch (item.tag) {
-            // TODO:
-            .table_header_start => {},
-            .table_key, .array_table_key => self.current_header.append(gpa, .{
-                .key = try self.takeKey(arena, item),
-            }),
+            .table_header_start, .array_table_header_start => {
+                self.current_header.clearRetainingCapacity();
+            },
+            .table_key, .array_table_key => try self.current_header.append(
+                gpa,
+                try self.takeKey(arena, item),
+            ),
             .table_header_end => {
                 assert(self.current_header.items.len > 0);
-                self.current_table = self.resolveHeader(gpa, arena);
+                self.current_table = self.resolveHeader(gpa, arena, .header);
                 assert(self.current_table != .root);
             },
             .array_table_header_end => {
                 assert(self.current_header.items.len > 0);
+                self.current_table = self.resolveHeader(gpa, arena, .array_element);
+                assert(self.current_table != .root);
             },
         }
     }
@@ -168,32 +163,79 @@ fn takeKey(self: *Decoder, arena: Allocator, item: Item) Error!String {
 
 /// Resolve the table attached to the current table header by creating or looking up
 /// the intermediate tables and the final table.
-fn resolveHeader(self: *Decoder, gpa: Allocator, arena: Allocator) Error!void {
+fn resolveHeader(self: *Decoder, gpa: Allocator, arena: Allocator, def: TableDef) Error!void {
     assert(self.current_header.items.len > 0);
 
     var current: TableIndex = .root;
-    for (self.current_header.items[0 .. self.current_header.items.len - 1]) |key| {
-        current = try self.getOrCreateTable(gpa, arena, current, key.key);
+    const header = self.current_header.items;
+    for (header[0 .. header.len - 1]) |key| {
+        current = try self.getOrCreateTable(gpa, arena, current, key);
     }
 
-    const final_key = self.current_header.items[self.current_header.items.len - 1];
+    const final_key = header[header.len - 1];
 
-    if (try self.findTable(current, final_key.key)) |existing| {
-        const ts = self.table_states.get(existing);
-        switch (ts.def) {
-            .implicit => {
-                ts.def = .header;
-                return existing;
-            },
-            .root => unreachable,
-            else => return self.fail(error.InvalidTableDefinition, "invalid redefinition of table"),
-        }
+    switch (def) {
+        .header => {
+            if (try self.findTable(current, final_key.slice(self.result))) |existing| {
+                const existing_def = self.table_defs.items[existing];
+                switch (existing_def) {
+                    .implicit => {
+                        self.table_defs.items[existing] = .header;
+                        return existing;
+                    },
+                    .root => unreachable,
+                    else => return self.fail(
+                        error.InvalidTableDefinition,
+                        "invalid redefinition of table",
+                    ),
+                }
+            }
+
+            const i = try self.createTable(gpa, arena, .header);
+            try self.appendTable(gpa, current, final_key, .{ .table = i });
+
+            return i;
+        },
+        .array_element => {
+            const entries = self.entry_bufs.items[current];
+            const key_str = final_key.slice(self.result);
+            var i: ?u32 = null;
+            for (entries.items) |entry| {
+                if (std.mem.eql(u8, key_str, entry.key.slice(self.result))) {
+                    switch (entry.value) {
+                        .array => |a| {
+                            i = a;
+                            break;
+                        },
+                        else => return self.fail(
+                            error.NotArray,
+                            "cannot append table to element that is not array of tables",
+                        ),
+                    }
+                }
+            }
+
+            if (i == null) {
+                i = self.result.arrays.items.len;
+                const start = self.result.values.items.len;
+                try self.result.arrays.append(arena, .{ .start = start, .end = start });
+
+                assert(self.result.arrays.items.len == i);
+
+                try self.appendTable(gpa, current, final_key, .{ .array = i });
+            }
+
+            const table = try self.createTable(gpa, arena, .array_element);
+
+            assert(self.result.values.items.len == self.result.arrays.items[i].end);
+            try self.result.values.append(arena, .{ .table = table });
+
+            self.result.arrays.items[i].end += 1;
+
+            return i;
+        },
+        else => unreachable,
     }
-
-    const i = try self.createTable(gpa, arena, .header);
-    try self.appendTable(gpa, current, final_key.key, .{ .table = i });
-
-    return i;
 }
 
 /// Find or create the implicit, intermediate table from the given parent table.
@@ -205,11 +247,35 @@ fn getOrCreateTable(
     key: String,
 ) Error!TableIndex {
     if (try self.findTable(parent, key.slice(self.result))) |existing| {
-        const ts = self.table_states.get(existing);
-        switch (ts.def) {
+        const td = self.table_defs.items[existing];
+        switch (td) {
             .implicit, .header => return existing,
+            .array_element => {
+                const parent_entries = self.entry_bufs.items[parent];
+                const key_str = key.slice(self.result);
+                const i = blk: for (parent_entries.items) |entry| {
+                    if (std.mem.eql(u8, key_str, entry.key.slice(self.result))) {
+                        switch (entry.value) {
+                            .array => |a| break :blk a,
+                            else => return self.fail(error.NotArray, null),
+                        }
+                    }
+
+                    break :blk null;
+                };
+                const arr = self.result.arrays.items[i];
+
+                if (arr.start == arr.end) {
+                    return self.fail(error.InvalidTable, "referring table in an empty array");
+                }
+
+                return switch (self.result.values.items[arr.end - 1]) {
+                    .table => |t| t,
+                    else => self.fail(error.InvalidTable, "given array element is not a table"),
+                };
+            },
             .root => unreachable,
-            else => return self.fail(error.InvalidTableDefinition, "invalid redefinition of table"),
+            else => return self.fail(error.InvalidTable, "invalid redefinition of table"),
         }
     }
 
@@ -220,8 +286,8 @@ fn getOrCreateTable(
 }
 
 fn findTable(self: Decoder, parent: TableIndex, name: []const u8) Error!?TableIndex {
-    const ts = self.table_states.get(parent);
-    for (ts.entries.items) |entry| {
+    const entries = self.entry_bufs.items[parent];
+    for (entries.items) |entry| {
         if (std.mem.eql(u8, name, entry.key.slice(self.result))) {
             return switch (entry.value) {
                 .table => |t| t,
@@ -237,16 +303,19 @@ fn createTable(
     self: *Decoder,
     gpa: Allocator,
     arena: Allocator,
-    def: TableState.Definition,
+    def: TableDef,
 ) Allocator.Error!TableIndex {
-    assert(self.result.tables.items.len == self.table_states.len);
+    assert(self.result.tables.items.len == self.table_defs.items.len);
+    assert(self.result.tables.items.len == self.entry_bufs.items.len);
 
     const i: TableIndex = @enumFromInt(self.result.tables.items.len);
 
     try self.result.tables.append(arena, .{ .entries = .{ .start = 0, .end = 0 } });
-    try self.table_states.append(gpa, .{ .def = def });
+    try self.table_defs.append(gpa, def);
+    try self.entry_bufs.append(gpa, .empty);
 
-    assert(self.result.tables.items.len == self.table_states.len);
+    assert(self.result.tables.items.len == self.table_defs.items.len);
+    assert(self.result.tables.items.len == self.entry_bufs.items.len);
 
     return i;
 }
@@ -258,8 +327,9 @@ fn appendTable(
     key: String,
     value: Value,
 ) Allocator.Error!void {
-    const ts = self.table_states.get(table);
-    try ts.append(gpa, key, value);
+    var entries = self.entry_bufs.items[table];
+    try entries.append(gpa, .{ .key = key, .value = value });
+    self.total_entries += 1;
 }
 
 fn decodeString(self: *Decoder, arena: Allocator, item: Item) Error!String {
