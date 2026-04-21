@@ -24,6 +24,7 @@ const TableIndex = @import("value.zig").TableIndex;
 const Value = @import("value.zig").Value;
 
 borrow: bool,
+parser: Parser,
 result: Parsed,
 features: Features,
 diagnostics: ?*Diagnostics,
@@ -85,9 +86,13 @@ const TableDef = enum {
     implicit,
 };
 
-pub fn decode(gpa: Allocator, input: []const u8, options: Options) Error!Parsed {
+pub fn decode(gpa: Allocator, input: []const u8, options: Options) (Error || Parser.Error)!Parsed {
     var self: Decoder = .{
         .borrow = options.borrow,
+        .parser = .init(input, .{
+            .toml_version = options.toml_version,
+            .diagnostics = options.diagnostics,
+        }),
         .result = .{
             .arena = .init(gpa),
             .input = input,
@@ -108,12 +113,7 @@ pub fn decode(gpa: Allocator, input: []const u8, options: Options) Error!Parsed 
         return self.fail(error.InputTooLarge, "input exceed 4GiB");
     }
 
-    var parser: Parser = .init(input, .{
-        .toml_version = options.toml_version,
-        .diagnostics = options.diagnostics,
-    });
-
-    while (try parser.next()) |item| {
+    while (try self.parser.next()) |item| {
         switch (item.tag) {
             .table_header_start, .array_table_header_start => {
                 self.current_header.clearRetainingCapacity();
@@ -454,23 +454,24 @@ fn decodeString(self: *Decoder, arena: Allocator, item: Item) Error!String {
     return .{ .owned = .{ .start = start, .end = self.result.strings.items.len } };
 }
 
-// TODO:
-fn fail(self: Decoder, err: Error, msg: ?[]const u8) Error {
+fn fail(self: *Decoder, err: Error, msg: ?[]const u8) Error {
     assert(err != error.Reported);
-    _ = self;
-    _ = msg;
 
-    // if (self.diagnostics) |diag| {
-    //     diag.* = .{
-    //         .position = self.parser.tokenizer.position(),
-    //         .message = if (msg) |m| m else switch (err) {
-    //             error.InputTooLarge => "input too large",
-    //             error.Reported => unreachable,
-    //         },
-    //     };
-    //
-    //     return error.Reported;
-    // }
+    if (self.diagnostics) |diag| {
+        diag.* = .{
+            // TODO: Calculate a more granular position for decoder errors.
+            .position = self.parser.tokenizer.position(),
+            .message = if (msg) |m| m else switch (err) {
+                error.InputTooLarge => "input too large",
+                error.InvalidTable => "invalid table definition",
+                error.NotArray => "element is not an array",
+                error.NotTable => "element is not a table",
+                error.Reported => unreachable,
+            },
+        };
+
+        return error.Reported;
+    }
 
     return err;
 }
