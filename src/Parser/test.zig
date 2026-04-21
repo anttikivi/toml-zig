@@ -10,12 +10,12 @@ const Error = Parser.Error;
 const Item = Parser.Item;
 const State = Parser.State;
 const Span = @import("../root.zig").Span;
-const Date = @import("../value.zig").Date;
-const Time = @import("../value.zig").Time;
-const Datetime = @import("../value.zig").Datetime;
+const Date = @import("../toml.zig").Date;
+const Datetime = @import("../toml.zig").Datetime;
 const default_version = @import("../toml.zig").default_version;
 const Float = @import("../toml.zig").Float;
 const Int = @import("../toml.zig").Int;
+const Time = @import("../toml.zig").Time;
 const Version = @import("../toml.zig").Version;
 
 const TestItem = struct {

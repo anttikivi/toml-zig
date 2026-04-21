@@ -14,14 +14,14 @@ const Parser = @import("Parser.zig");
 const Item = @import("Parser.zig").Item;
 const Diagnostics = @import("root.zig").Diagnostics;
 const Span = @import("root.zig").Span;
+const Date = @import("toml.zig").Date;
+const Datetime = @import("toml.zig").Datetime;
 const default_version = @import("toml.zig").default_version;
 const Features = @import("toml.zig").Features;
+const Float = @import("toml.zig").Float;
+const Int = @import("toml.zig").Int;
+const Time = @import("toml.zig").Time;
 const Version = @import("toml.zig").Version;
-const Array = @import("value.zig").Array;
-const String = @import("value.zig").String;
-const Table = @import("value.zig").Table;
-const TableIndex = @import("value.zig").TableIndex;
-const Value = @import("value.zig").Value;
 
 borrow: bool,
 parser: Parser,
@@ -30,7 +30,8 @@ features: Features,
 diagnostics: ?*Diagnostics,
 
 current_table: TableIndex = .root,
-current_header: ArrayList(String) = .empty,
+current_header: ArrayList(Key) = .empty,
+key_buf: ArrayList(Key) = .empty,
 
 /// Build-time information on how to TOML tables are defined in the input document. The indices must
 /// run in parallel to the table indices.
@@ -61,7 +62,6 @@ pub const Options = struct {
 };
 
 pub const Parsed = struct {
-    arena: *ArenaAllocator,
     input: []const u8,
 
     tables: ArrayList(Table) = .empty,
@@ -72,11 +72,69 @@ pub const Parsed = struct {
 
     const Self = @This();
 
-    pub fn deinit(self: *Self) void {
-        self.arena.deinit();
-        self.arena.* = undefined;
+    pub fn deinit(self: *Self, gpa: Allocator) void {
+        self.tables.deinit(gpa);
+        self.arrays.deinit(gpa);
+        self.entries.deinit(gpa);
+        self.values.deinit(gpa);
+        self.strings.deinit(gpa);
         self.* = undefined;
     }
+};
+
+pub const TableIndex = enum(u32) {
+    root = 0,
+    _,
+};
+
+pub const Value = union(enum) {
+    string: String,
+    int: Int,
+    float: Float,
+    boolean: bool,
+    datetime: Datetime,
+    local_datetime: Datetime,
+    local_date: Date,
+    local_time: Time,
+    array: u32,
+    table: TableIndex,
+};
+
+pub const Table = struct {
+    entries: Span,
+
+    pub const Entry = struct {
+        key: String,
+        value: Value,
+    };
+};
+
+/// Span representing a string. It differentiates between borrowed and owned strings.
+pub const String = union(enum) {
+    borrowed: Span,
+    owned: Span,
+
+    const Self = @This();
+
+    pub fn bytes(self: Self, p: Parsed) []const u8 {
+        return switch (self) {
+            .borrowed => |s| p.input[s.start..s.end],
+            .owned => |s| p.strings.items[s.start..s.end],
+        };
+    }
+
+    pub fn eql(self: Self, p: Parsed, b: []const u8) bool {
+        return switch (self) {
+            .borrowed => |s| std.mem.eql(u8, p.input[s.start..s.end], b),
+            .owned => |s| std.mem.eql(u8, p.strings.items[s.start..s.end], b),
+        };
+    }
+};
+
+/// Wrapper for key strings that contains the resolved bytes to avoid slice lookups.
+const Key = struct {
+    str: String,
+    bytes: []const u8,
 };
 
 const TableDef = enum {
@@ -93,25 +151,24 @@ pub fn decode(gpa: Allocator, input: []const u8, options: Options) (Error || Par
             .toml_version = options.toml_version,
             .diagnostics = options.diagnostics,
         }),
-        .result = .{
-            .arena = .init(gpa),
-            .input = input,
-        },
+        .result = .{ .input = input },
         .features = .init(options.toml_version),
         .diagnostics = options.diagnostics,
     };
-    errdefer self.result.deinit();
+    errdefer self.result.deinit(gpa);
     defer self.deinit(gpa);
-
-    const arena = self.result.arena.allocator();
-
-    // Reserve first index for root.
-    try self.result.tables.append(arena, .{ .entries = .{ .start = 0, .end = 0 } });
-    try self.table_states.append(gpa, .{ .def = .root });
 
     if (input.len > std.math.maxInt(u32)) {
         return self.fail(error.InputTooLarge, "input exceed 4GiB");
     }
+
+    // Reserve first index for root.
+    try self.result.tables.append(gpa, .{ .entries = .{ .start = 0, .end = 0 } });
+    try self.table_defs.append(gpa, .root);
+    try self.entry_bufs.append(gpa, .empty);
+
+    // Reserve space for the strings to keep the pointers stable throughout the parsing.
+    try self.result.strings.ensureTotalCapacityPrecise(gpa, input.len);
 
     while (try self.parser.next()) |item| {
         switch (item.tag) {
@@ -120,17 +177,20 @@ pub fn decode(gpa: Allocator, input: []const u8, options: Options) (Error || Par
             },
             .table_key, .array_table_key => try self.current_header.append(
                 gpa,
-                try self.takeKey(arena, item),
+                try self.takeKey(item),
             ),
             .table_header_end => {
                 assert(self.current_header.items.len > 0);
-                self.current_table = self.resolveHeader(gpa, arena, .header);
+                self.current_table = self.resolveHeader(gpa, .header);
                 assert(self.current_table != .root);
             },
             .array_table_header_end => {
                 assert(self.current_header.items.len > 0);
-                self.current_table = self.resolveHeader(gpa, arena, .array_element);
+                self.current_table = self.resolveHeader(gpa, .array_element);
                 assert(self.current_table != .root);
+            },
+            .key => {
+                const key = try self.takeKey(item);
             },
         }
     }
@@ -143,40 +203,47 @@ fn deinit(self: *Decoder, gpa: Allocator) void {
     self.table_states.deinit(gpa);
 }
 
-fn takeKey(self: *Decoder, arena: Allocator, item: Item) Error!String {
+fn takeKey(self: *Decoder, item: Item) Error!Key {
     return switch (item.value) {
         .literal, .literal_string => blk: {
             if (self.borrow) {
-                break :blk .{ .borrowed = item.span };
+                const str: String = .{ .borrowed = item.span };
+                break :blk .{ .str = str, .bytes = str.bytes(self.result) };
             } else {
                 const span = item.span;
                 const start = self.result.strings.items.len;
                 const end = start + span.len();
-                try self.result.strings.appendSlice(arena, self.result.input[span.start..span.end]);
-                break :blk .{ .owned = .{ .start = start, .end = end } };
+                self.result.strings.appendSliceAssumeCapacity(
+                    self.result.input[span.start..span.end],
+                );
+                const str: String = .{ .owned = .{ .start = start, .end = end } };
+                break :blk .{ .str = str, .bytes = str.bytes(self.result) };
             }
         },
-        .string => try self.decodeString(arena, item),
+        .string => blk: {
+            const str = try self.decodeString(item);
+            break :blk .{ .str = str, .bytes = str.bytes(self.result) };
+        },
         else => unreachable,
     };
 }
 
 /// Resolve the table attached to the current table header by creating or looking up
 /// the intermediate tables and the final table.
-fn resolveHeader(self: *Decoder, gpa: Allocator, arena: Allocator, def: TableDef) Error!void {
+fn resolveHeader(self: *Decoder, gpa: Allocator, def: TableDef) Error!TableIndex {
     assert(self.current_header.items.len > 0);
 
     var current: TableIndex = .root;
     const header = self.current_header.items;
     for (header[0 .. header.len - 1]) |key| {
-        current = try self.getOrCreateTable(gpa, arena, current, key);
+        current = try self.getOrCreateTable(gpa, current, key);
     }
 
     const final_key = header[header.len - 1];
 
     switch (def) {
         .header => {
-            if (try self.findTable(current, final_key.slice(self.result))) |existing| {
+            if (try self.findTable(current, final_key.bytes)) |existing| {
                 const existing_def = self.table_defs.items[existing];
                 switch (existing_def) {
                     .implicit => {
@@ -191,17 +258,16 @@ fn resolveHeader(self: *Decoder, gpa: Allocator, arena: Allocator, def: TableDef
                 }
             }
 
-            const i = try self.createTable(gpa, arena, .header);
-            try self.appendTable(gpa, current, final_key, .{ .table = i });
+            const i = try self.createTable(gpa, .header);
+            try self.appendTable(gpa, current, final_key.str, .{ .table = i });
 
             return i;
         },
         .array_element => {
             const entries = self.entry_bufs.items[current];
-            const key_str = final_key.slice(self.result);
             var i: ?u32 = null;
             for (entries.items) |entry| {
-                if (std.mem.eql(u8, key_str, entry.key.slice(self.result))) {
+                if (entry.key.eql(self.result, final_key.bytes)) {
                     switch (entry.value) {
                         .array => |a| {
                             i = a;
@@ -218,17 +284,17 @@ fn resolveHeader(self: *Decoder, gpa: Allocator, arena: Allocator, def: TableDef
             if (i == null) {
                 i = self.result.arrays.items.len;
                 const start = self.result.values.items.len;
-                try self.result.arrays.append(arena, .{ .start = start, .end = start });
+                try self.result.arrays.append(gpa, .{ .start = start, .end = start });
 
                 assert(self.result.arrays.items.len == i);
 
-                try self.appendTable(gpa, current, final_key, .{ .array = i });
+                try self.appendTable(gpa, current, final_key.str, .{ .array = i });
             }
 
-            const table = try self.createTable(gpa, arena, .array_element);
+            const table = try self.createTable(gpa, .array_element);
 
             assert(self.result.values.items.len == self.result.arrays.items[i].end);
-            try self.result.values.append(arena, .{ .table = table });
+            try self.result.values.append(gpa, .{ .table = table });
 
             self.result.arrays.items[i].end += 1;
 
@@ -239,22 +305,15 @@ fn resolveHeader(self: *Decoder, gpa: Allocator, arena: Allocator, def: TableDef
 }
 
 /// Find or create the implicit, intermediate table from the given parent table.
-fn getOrCreateTable(
-    self: *Decoder,
-    gpa: Allocator,
-    arena: Allocator,
-    parent: TableIndex,
-    key: String,
-) Error!TableIndex {
+fn getOrCreateTable(self: *Decoder, gpa: Allocator, parent: TableIndex, key: Key) Error!TableIndex {
     if (try self.findTable(parent, key.slice(self.result))) |existing| {
         const td = self.table_defs.items[existing];
         switch (td) {
             .implicit, .header => return existing,
             .array_element => {
                 const parent_entries = self.entry_bufs.items[parent];
-                const key_str = key.slice(self.result);
                 const i = blk: for (parent_entries.items) |entry| {
-                    if (std.mem.eql(u8, key_str, entry.key.slice(self.result))) {
+                    if (entry.key.eql(self.result, key.bytes)) {
                         switch (entry.value) {
                             .array => |a| break :blk a,
                             else => return self.fail(error.NotArray, null),
@@ -279,16 +338,16 @@ fn getOrCreateTable(
         }
     }
 
-    const i = try self.createTable(gpa, arena, .implicit);
-    try self.appendTable(gpa, parent, key, .{ .table = i });
+    const i = try self.createTable(gpa, .implicit);
+    try self.appendTable(gpa, parent, key.str, .{ .table = i });
 
     return i;
 }
 
-fn findTable(self: Decoder, parent: TableIndex, name: []const u8) Error!?TableIndex {
+fn findTable(self: *Decoder, parent: TableIndex, name: []const u8) Error!?TableIndex {
     const entries = self.entry_bufs.items[parent];
     for (entries.items) |entry| {
-        if (std.mem.eql(u8, name, entry.key.slice(self.result))) {
+        if (entry.key.eql(self.result, name)) {
             return switch (entry.value) {
                 .table => |t| t,
                 else => self.fail(error.NotTable, null),
@@ -299,18 +358,13 @@ fn findTable(self: Decoder, parent: TableIndex, name: []const u8) Error!?TableIn
     return null;
 }
 
-fn createTable(
-    self: *Decoder,
-    gpa: Allocator,
-    arena: Allocator,
-    def: TableDef,
-) Allocator.Error!TableIndex {
+fn createTable(self: *Decoder, gpa: Allocator, def: TableDef) Allocator.Error!TableIndex {
     assert(self.result.tables.items.len == self.table_defs.items.len);
     assert(self.result.tables.items.len == self.entry_bufs.items.len);
 
     const i: TableIndex = @enumFromInt(self.result.tables.items.len);
 
-    try self.result.tables.append(arena, .{ .entries = .{ .start = 0, .end = 0 } });
+    try self.result.tables.append(gpa, .{ .entries = .{ .start = 0, .end = 0 } });
     try self.table_defs.append(gpa, def);
     try self.entry_bufs.append(gpa, .empty);
 
@@ -327,12 +381,12 @@ fn appendTable(
     key: String,
     value: Value,
 ) Allocator.Error!void {
-    var entries = self.entry_bufs.items[table];
+    var entries = &self.entry_bufs.items[table];
     try entries.append(gpa, .{ .key = key, .value = value });
     self.total_entries += 1;
 }
 
-fn decodeString(self: *Decoder, arena: Allocator, item: Item) Error!String {
+fn decodeString(self: *Decoder, item: Item) Error!String {
     const buf = self.result.input[item.span.start..self.span.end];
     var i = std.mem.findScalar(u8, buf, '\\');
     if (self.borrow and i == null) {
@@ -341,13 +395,13 @@ fn decodeString(self: *Decoder, arena: Allocator, item: Item) Error!String {
 
     const start = self.result.strings.items.len;
 
-    try self.result.strings.appendSlice(arena, buf[0..i]);
+    self.result.strings.appendSliceAssumeCapacity(buf[0..i]);
 
     while (std.mem.findScalarPos(u8, buf, i, '\\')) |j| {
         assert(j + 1 < buf.len);
 
         if (i != j) {
-            try self.result.strings.appendSlice(arena, buf[i..j]);
+            self.result.strings.appendSliceAssumeCapacity(buf[i..j]);
         }
 
         j += 1;
@@ -355,28 +409,28 @@ fn decodeString(self: *Decoder, arena: Allocator, item: Item) Error!String {
         switch (c) {
             '"', '\\' => {},
             'b' => {
-                try self.result.strings.append(arena, 8);
+                try self.result.strings.appendAssumeCapacity(8);
                 j += 1;
             },
             'f' => {
-                try self.result.strings.append(arena, 12);
+                try self.result.strings.appendAssumeCapacity(12);
                 j += 1;
             },
             't' => {
-                try self.result.strings.append(arena, '\t');
+                try self.result.strings.appendAssumeCapacity('\t');
                 j += 1;
             },
             'r' => {
-                try self.result.strings.append(arena, '\r');
+                try self.result.strings.appendAssumeCapacity('\r');
                 j += 1;
             },
             'n' => {
-                try self.result.strings.append(arena, '\n');
+                try self.result.strings.appendAssumeCapacity('\n');
                 j += 1;
             },
             'e' => {
                 assert(self.features.escape_e);
-                try self.result.strings.append(arena, 27);
+                try self.result.strings.appendAssumeCapacity(27);
                 j += 1;
             },
             'x' => {
@@ -393,7 +447,7 @@ fn decodeString(self: *Decoder, arena: Allocator, item: Item) Error!String {
                 const n = std.unicode.utf8Encode(codepoint, &b) catch |err| {
                     return self.fail(err, null);
                 };
-                try self.result.strings.appendSlice(arena, b[0..n]);
+                self.result.strings.appendSliceAssumeCapacity(b[0..n]);
                 j += 2;
             },
             'u' => {
@@ -409,7 +463,7 @@ fn decodeString(self: *Decoder, arena: Allocator, item: Item) Error!String {
                 const n = std.unicode.utf8Encode(codepoint, &b) catch |err| {
                     return self.fail(err, null);
                 };
-                try self.result.strings.appendSlice(arena, b[0..n]);
+                self.result.strings.appendSliceAssumeCapacity(b[0..n]);
                 j += 4;
             },
             'U' => {
@@ -425,7 +479,7 @@ fn decodeString(self: *Decoder, arena: Allocator, item: Item) Error!String {
                 const n = std.unicode.utf8Encode(codepoint, &b) catch |err| {
                     return self.fail(err, null);
                 };
-                try self.result.strings.appendSlice(arena, b[0..n]);
+                self.result.strings.appendSliceAssumeCapacity(b[0..n]);
                 j += 8;
             },
             ' ', '\t', '\r', '\n' => switch (item.value) {
@@ -448,7 +502,7 @@ fn decodeString(self: *Decoder, arena: Allocator, item: Item) Error!String {
 
         i = j;
     } else {
-        try self.result.strings.appendSlice(arena, buf[i..]);
+        self.result.strings.appendSliceAssumeCapacity(buf[i..]);
     }
 
     return .{ .owned = .{ .start = start, .end = self.result.strings.items.len } };

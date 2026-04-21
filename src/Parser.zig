@@ -19,14 +19,14 @@ const Diagnostics = @import("root.zig").Diagnostics;
 const Span = @import("root.zig").Span;
 const Tokenizer = @import("Tokenizer.zig");
 const Token = @import("Tokenizer.zig").Token;
+const Date = @import("toml.zig").Date;
+const Datetime = @import("toml.zig").Datetime;
 const default_version = @import("toml.zig").default_version;
 const Features = @import("toml.zig").Features;
 const Float = @import("toml.zig").Float;
 const Int = @import("toml.zig").Int;
+const Time = @import("toml.zig").Time;
 const Version = @import("toml.zig").Version;
-const Datetime = @import("value.zig").Datetime;
-const Date = @import("value.zig").Date;
-const Time = @import("value.zig").Time;
 
 state: State = .table,
 token: ?Token = null,
