@@ -26,7 +26,7 @@ jobs:
   shell:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - run: shellcheck ./tools/zig.sh
       - run: shellcheck ./tools/download_zig.sh
       - run: shellcheck ./tools/minisign.sh
@@ -43,7 +43,7 @@ jobs:
   reuse:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - uses: actions/setup-python@v6.2.0
         with:
           python-version: "3.14"
@@ -52,7 +52,7 @@ jobs:
   aarch64-freebsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - uses: cross-platform-actions/action@v1.0.0
         with:
           operating_system: freebsd
@@ -63,19 +63,19 @@ jobs:
   aarch64-linux:
     runs-on: ubuntu-22.04-arm
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - run: sh ci/linux.sh
 
   aarch64-macos:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - run: sh ci/aarch64-macos.sh
 
   aarch64-netbsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - uses: cross-platform-actions/action@v1.0.0
         with:
           operating_system: netbsd
@@ -86,13 +86,13 @@ jobs:
   aarch64-windows:
     runs-on: windows-11-arm
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - run: .\ci\windows.ps1
 
   x86_64-freebsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - uses: cross-platform-actions/action@v1.0.0
         with:
           operating_system: freebsd
@@ -103,19 +103,19 @@ jobs:
   x86_64-linux:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - run: sh ci/linux.sh
 
   x86_64-macos:
     runs-on: macos-15-intel
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - run: sh ci/x86_64-macos.sh
 
   x86_64-netbsd:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - uses: cross-platform-actions/action@v1.0.0
         with:
           operating_system: netbsd
@@ -126,14 +126,14 @@ jobs:
   x86_64-windows:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
       - run: .\ci\windows.ps1
 
   bench-linux:
     needs: [aarch64-linux, x86_64-linux]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - run: ./zig build generate-bench-data -Dbenchmarks="${{ env.BENCHMARKS }}"
@@ -143,7 +143,7 @@ jobs:
     needs: [aarch64-macos, x86_64-macos]
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - run: ./zig build generate-bench-data -Dbenchmarks="${{ env.BENCHMARKS }}"
@@ -153,7 +153,7 @@ jobs:
     needs: [aarch64-windows, x86_64-windows]
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
       - run: .\zig.ps1 build generate-bench-data -Dbenchmarks="${{ env.BENCHMARKS }}"
