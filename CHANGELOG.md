@@ -8,6 +8,11 @@ and this project adheres to
 
 ## [Unreleased]
 
+### Fixed
+
+- Free the memory of the parsed tree when `toml.decode` fails. Previously the
+  arena was leaked on every rejected document.
+
 ## [0.2.0] - 2026-03-04
 
 ### Added

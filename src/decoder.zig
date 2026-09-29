@@ -107,6 +107,7 @@ const Utf8Error = Allocator.Error || error{ InvalidUtf8, Reported };
 
 pub fn decode(gpa: Allocator, input: []const u8, options: DecodeOptions) !Parsed {
     var arena_allocator: std.heap.ArenaAllocator = .init(gpa);
+    errdefer arena_allocator.deinit();
     const arena = arena_allocator.allocator();
 
     if (options.validate_utf8) {
@@ -188,4 +189,13 @@ fn failUtf8(gpa: Allocator, input: []const u8, cursor: usize, diagnostics: ?*Dia
     }
 
     return error.InvalidUtf8;
+}
+
+test "decode frees the arena when parsing fails" {
+    const gpa = std.testing.allocator;
+    if (decode(gpa, "a = 1\nb = [1, 2\n", .{})) |parsed| {
+        var p = parsed;
+        p.deinit();
+        return error.TestExpectedError;
+    } else |_| {}
 }
