@@ -41,7 +41,7 @@ pub const Value = union(enum) {
             },
             .array => |array| {
                 try writer.writeByte('[');
-                for (array.items, 0..) |item, i| {
+                for (array, 0..) |item, i| {
                     if (i > 0) {
                         try writer.writeAll(", ");
                     }
@@ -424,6 +424,21 @@ test "Table iterator, getEntryPtr, and getPath" {
     try testing.expectEqualDeep(Value{ .string = "dot-key" }, dotted_nested_key_value.*);
 
     try testing.expect(root.getPath(&.{ "a", "missing" }) == null);
+}
+
+test "Value format" {
+    const testing = std.testing;
+
+    const items = [_]Value{ .{ .int = 1 }, .{ .string = "x" }, .{ .bool = true } };
+    const entries = [_]Table.Entry{
+        .{ .key = "a", .value = .{ .array = &items } },
+        .{ .key = "b", .value = .{ .array = &.{} } },
+    };
+    const value: Value = .{ .table = .{ .entries = &entries } };
+
+    const s = try std.fmt.allocPrint(testing.allocator, "{f}", .{value});
+    defer testing.allocator.free(s);
+    try testing.expectEqualStrings("{a = [1, x, true], b = []}", s);
 }
 
 fn isValidTimezone(tz: i16) bool {
